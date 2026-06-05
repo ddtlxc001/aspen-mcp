@@ -1,0 +1,10 @@
+INPUT: blank_template.inm
+MODNAME: apmain
+RUNID: blank_template
+NEW_RUNID: blank_template
+OLD_RUNID: blank_template
+PDF: blank_template.appdf
+USERNAME: 34158
+XMOD: C:\Program Files\AspenTech\Aspen Plus V15.0\Engine\xeq\apmain
+SPONLY:
+DBCONN: _3721rgp.ads

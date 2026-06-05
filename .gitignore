@@ -1,0 +1,13 @@
+venv/
+aspen_mcp_cache.json
+nul
+__pycache__/
+*.pyc
+*.pyo
+*.apw
+*.bkp
+*.rep
+_*.oro
+_*.vjc
+_*.ehd
+tree_explorer.py

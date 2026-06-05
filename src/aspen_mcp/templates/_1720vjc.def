@@ -1,0 +1,11 @@
+SLAVE:
+INPUT: _1720vjc.inm
+MODNAME: apmain
+RUNID: _1720vjc
+NEW_RUNID: _1720vjc
+OLD_RUNID: _1720vjc
+PDF: _1720vjc.appdf
+USERNAME: 34158
+XMOD: C:\Program Files\AspenTech\Aspen Plus V15.0\Engine\xeq\apmain
+SPONLY:
+DBCONN: _1720vjc

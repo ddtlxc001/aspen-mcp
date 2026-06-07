@@ -25,8 +25,11 @@ _*.vjc
 _*.ehd
 
 # Scratch / local scripts
-tree_explorer.py
 nul
+
+# Removed dead code (keep ignored to prevent accidental re-commit)
+com_bridge2.py
+_remove_old_utils.py
 
 # OS artifacts
 .DS_Store

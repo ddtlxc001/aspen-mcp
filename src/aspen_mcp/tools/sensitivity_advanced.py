@@ -52,6 +52,65 @@ def _com_read_stream_mf(stream_name: str, component: str) -> float | None:
         return None
 
 
+# Colon shortcut -> COM path mapping for stream results
+STREAM_RES_MAP: dict[str, str] = {
+    "RES_MOLEFLOW": "RES_MOLEFLOW",
+    "RES_MASSFLOW": "RES_MASSFLOW",
+    "RES_TEMP":    "RES_TEMP",
+    "RES_PRES":    "RES_PRES",
+    "RES_VFRAC":   "RES_VFRAC",
+    "RES_MW":      "MW",
+}
+
+
+def _parse_target(raw: str) -> str:
+    """Convert a target spec to a backslash path.
+
+    Accepts two formats:
+      1. Colon shortcut:  "NAPH:RES_MOLEFLOW" or "NAPH:NAPHTHAL"
+      2. Backslash path:  "Streams\\NAPH\\MOLEFLOW\\MIXED"
+
+    Colon shortcuts:
+      - STREAM:RES_MOLEFLOW  -> total molar flow
+      - STREAM:RES_MASSFLOW  -> total mass flow
+      - STREAM:RES_TEMP      -> outlet temperature
+      - STREAM:RES_PRES      -> outlet pressure
+      - STREAM:RES_VFRAC     -> vapor fraction
+      - STREAM:COMPONENT     -> mole fraction of COMPONENT in STREAM (X node)
+    """
+    if ":" not in raw:
+        return raw  # already a backslash path
+
+    name, key = raw.split(":", 1)
+
+    # Try stream result keywords
+    if key in STREAM_RES_MAP:
+        return f"Streams\\{name}\\{STREAM_RES_MAP[key]}"
+
+    # Fallback: assume COMPONENT -> liquid mole fraction (X node)
+    return f"Streams\\{name}\\X\\{key}"
+
+
+def _target_label(raw: str, resolved: str) -> str:
+    """Generate a unique, readable label for a target.
+
+    - Colon shortcut 'NAPH:NAPHTHAL' -> 'NAPH_NAPHTHAL'
+    - Colon shortcut 'H2GAS:RES_MOLEFLOW' -> 'H2GAS_RES_MOLEFLOW'
+    - Backslash path 'Streams\\NAPH\\TEMP_OUT' -> 'NAPH_TEMP_OUT'
+    - Backslash path 'Blocks\\HPD\\Output\\BOTTOM_TEMP' -> 'HPD_BOTTOM_TEMP'
+    """
+    if ":" in raw and "\\" not in raw:
+        return raw.replace(":", "_")
+    parts = resolved.split("\\")
+    # stream: Streams\\NAME\\... -> NAME_last
+    # block:  Blocks\\NAME\\... -> NAME_last
+    if len(parts) >= 3 and parts[0] in ("Streams", "Blocks"):
+        block = parts[1]
+        last = parts[-1]
+        return f"{block}_{last}"
+    return parts[-1]
+
+
 def tool_sensitivity_advanced(
     block_name: str,
     variable: str,
@@ -71,16 +130,18 @@ def tool_sensitivity_advanced(
         variable: Input variable name, e.g. "NSTAGE".
         values: List of values to sweep, e.g. [100, 130, 160, 182].
         linked_params: Params to update proportionally, e.g.
-            {"HPD\\\\FEED_STAGE\\\\FEED": 0.764,
-             "HPD\\\\FEED_STAGE\\\\FLA-OUT": 1.0}
+            {"HPD\\FEED_STAGE\\FEED": 0.764,
+             "HPD\\FEED_STAGE\\FLA-OUT": 1.0}
             Key = Data\\Blocks\\{block_name}\\Input\\{path} (relative to block)
             Value = multiplier (linked_param_value = variable_value * multiplier)
-        targets: Paths to read results from after each run, e.g.
-            ["Streams\\\\PRO-D\\\\MOLEFRAC\\\\MIXED\\\\PROPYLEN",
-             "Streams\\\\PRO-B\\\\MOLEFRAC\\\\MIXED\\\\PROPANE",
-             "Blocks\\\\COMP\\\\Output\\\\BRAKE_POWER",
-             "Blocks\\\\HPD\\\\Output\\\\BOTTOM_TEMP",
-             "Blocks\\\\HPD\\\\Output\\\\TOP_TEMP"]
+        targets: Result paths or colon shortcuts to read after each run.
+            Backslash paths (relative to Data\\):
+              ["Streams\\NAPH\\MOLEFLOW\\MIXED",
+               "Streams\\NAPH\\MOLEFRAC\\MIXED\\NAPHTHAL"]
+            Colon shortcuts (STREAM:KEYWORD or STREAM:COMPONENT):
+              ["NAPH:RES_MOLEFLOW", "NAPH:NAPHTHAL", "H2GAS:RES_MOLEFLOW"]
+            Keywords: RES_MOLEFLOW, RES_MASSFLOW, RES_TEMP, RES_PRES, RES_VFRAC.
+            If KEYWORD is not recognized, treated as a component name (X node).
         feed_stream: Name of feed stream to restore after each open.
         feed_temp: Feed temperature to restore.
         feed_pres: Feed pressure to restore.
@@ -100,11 +161,11 @@ def tool_sensitivity_advanced(
         full_path = f"Data\\Blocks\\{block_name}\\Input\\{param_path}"
         linked_mult[full_path] = mult
 
-    # Resolve target paths
+    # Resolve target paths (accepts colon shortcuts or backslash paths)
+    resolved_targets: list[str] = [_parse_target(t) for t in (targets or [])]
     target_labels: list[str] = []
-    for t in (targets or []):
-        label = t.split("\\")[-1]
-        target_labels.append(label)
+    for raw, resolved in zip((targets or []), resolved_targets):
+        target_labels.append(_target_label(raw, resolved))
 
     for val in values:
         row: dict[str, Any] = {"var": val}
@@ -145,8 +206,7 @@ def tool_sensitivity_advanced(
             def read_targets():
                 t_results = {}
                 root = aspen._app.RootModel("")
-                for t_path in (targets or []):
-                    label = t_path.split("\\")[-1]
+                for t_path, t_label in zip(resolved_targets, target_labels):
                     parts = t_path.split("\\")
                     if parts[0] == "Streams":
                         full = ["Data", "Streams", parts[1], "Output"] + parts[2:]
@@ -157,11 +217,11 @@ def tool_sensitivity_advanced(
                     node = _walk(root, *full)
                     if node is not None:
                         try:
-                            t_results[label] = node.Value
+                            t_results[t_label] = node.Value
                         except Exception:
-                            t_results[label] = str(node)[:60]
+                            t_results[t_label] = str(node)[:60]
                     else:
-                        t_results[label] = None
+                        t_results[t_label] = None
                 # Read block status
                 for key in ("BLKSTAT", "PER_ERROR"):
                     nd = _walk(aspen._app.RootModel(""),

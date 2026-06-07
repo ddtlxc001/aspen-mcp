@@ -154,7 +154,38 @@ If add_reaction() succeeds but the stoichiometry table is empty:
 
   Need to add rows first? Use get_value / explore to check existing rows.
 """,
-        "component-facts": """
+        "reactors": """
+# Reactor Setup Reference
+
+All 7 reactor types verified working with MCP tools.
+
+## RGibbs
+  No reaction setup needed -- just TEMP + PRES.
+
+## RStoic
+  Internal COEF/COEF1/CONV tables. Use setup_block_reaction().
+  N reactions = N rows. Do NOT insert extra empty rows.
+
+## REquil
+  Internal COEF/COEF1, NO MIXED substream. Has V(OUT)+L(OUT).
+
+## RYield
+  MOLE_YIELD table. After 2 insert_rows, auto-expands.
+
+## RCSTR
+  External reaction set. RXN_ID has pre-existing #0 element.
+  add_reaction() may not write COEF -- verify manually.
+  Must set VOL or RES_TIME.
+
+## RPlug
+  External reaction set + geometry + TYPE.
+  RXN_ID starts EMPTY -- must insert_row first.
+
+## RBatch
+  BC(IN) port REQUIRED. Ports: BC/CF/RP/VP.
+  Must set TYPE, CYCLE_TIME, PRINT_TIME, stop criteria.
+"""
+        "component-facts" """
 # Component TYPE Table
 
   The TYPE table has 2 columns:
@@ -422,7 +453,7 @@ This helps catch unit mismatch errors immediately.
 Three tools help diagnose incomplete simulations:
 
 ## 1. find_incomplete_inputs()
-  Scans ALL blocks, uses smart categorization per block type:
+  Scans ALL blocks AND utilities. For blocks, uses smart categorization:
   
   - Reads SPEC_OPT (operating mode) to determine which params are
     truly required vs optional in the current mode.
@@ -495,6 +526,105 @@ Three tools help diagnose incomplete simulations:
   Run it once before find_incomplete_inputs() to reduce noise.
   After running, find_incomplete_inputs() will only show the
   truly important missing parameters for your current simulation.
+""",
+        "utilities": """# Utility Management
+
+Use add_utility() or batch_add_utilities() -- NEVER set UTILITY_ID directly via set_param.
+
+## The Problem
+
+Setting UTILITY_ID via set_param() silently corrupts the simulation state.
+Aspen's engine validates on every COM property write; if a utility node
+exists but is incomplete, the engine marks the ENTIRE simulation as
+"input incomplete" and Run2() produces all-null. This is irreversible
+for the COM session -- close and reopen the .apw to recover.
+
+## The Solution: IHNodeCol.Add()
+
+add_utility() uses Aspen's official IHNodeCol.Add() method -- same pattern
+as add_block('B1!HEATER'). Configuration happens in ONE COM call.
+
+## Usage
+
+  add_utility('CHW-01', 'WATER', 'COOLER', {'TIN':7, 'TOUT':12, 'PRES':0.4})
+  add_utility('LPS-01', 'STEAM', 'ASSI-REB', {'PRES':0.5, 'VFRAC':1})
+  add_utility('ELEC-01', 'ELECTRICITY', 'COMP', {'ELEC_PRICE':0.5})
+
+## Types and Complete Parameter List
+
+All default params applied automatically. Override via params={{}}.
+
+  WATER:
+    TIN, TOUT, PRES, VFRAC(=0), CALOPT(=DUTY)
+    HTC=0.0003, CO2FACTOR=0.0001, ENERGY_PRICE=3e-8, PRICE=0.0005
+    COOLING_VALU=0, DENSITY=1000, VISCOSITY=1, CONDUCTIVITY=0.5
+    FACTORSOURCE=USER
+
+  STEAM (LPS / MPS):
+    PRES, VFRAC(=1), TIN, TOUT, CALOPT(=DUTY)
+    HTC=0.001, CO2FACTOR=0.2, ENERGY_PRICE=6e-6 / 1e-5
+    PRICE=0.02 / 0.03, COOLING_VALU=2000
+    DENSITY=0.6, VISCOSITY=0.015, CONDUCTIVITY=0.03
+    FACTORSOURCE=USER, FUELSOURCE=USER
+
+    NOTE: CO2FACTOR unit is kg/cal. STEAM needs ~0.2 (not 0.0002).
+
+  ELECTRICITY:
+    CALOPT(=DUTY), ELEC_PRICE=0.08, CO2FACTOR=0.5
+    ENERGY_PRICE=0.08, HTC=0.001, PRICE=0.08
+    FACTORSOURCE=USER, FUELSOURCE=USER
+
+  REFRIGERANT:  PRES, VFRAC
+  FUEL:         PRES, VFRAC
+
+## PV->TP Auto-Switch
+
+add_utility() auto-handles PV->TP for HEATER blocks: reads B_TEMP/B_PRES,
+writes to Input, switches SPEC_OPT, assigns UTILITY_ID.
+
+## batch_add_utilities()
+
+Creates multiple utilities in ONE COM call (engine validates once).
+Use for 2+ utilities instead of calling add_utility() repeatedly.
+
+  batch_add_utilities([
+    {"name": "CHW-01", "type": "WATER", "block": "COOLER",
+     "params": {"TIN":2, "TOUT":7, "PRES":0.4}},
+    {"name": "ELEC-01", "type": "ELECTRICITY", "block": "COMP"},
+  ])
+
+## For Columns: COND_UTIL / REB_UTIL
+
+Column condensers and reboilers use **separate** parameters (`COND_UTIL`, `REB_UTIL`)
+rather than `UTILITY_ID`. After creating the utility with batch_add_utilities(),
+assign it to the column:
+
+  set_value(r'\\Data\\Blocks\\C1\\Input\\COND_UTIL', 'C1CCW')
+  set_value(r'\\Data\\Blocks\\C1\\Input\\REB_UTIL',  'C1RLPS')
+
+Use descriptive naming so the utility name tells you the device:
+
+  E4QCW     = E4 Quench Cooling Water
+  C1CCW     = C1 Condenser Cooling Water
+  C2CCW     = C2 Condenser Cooling Water
+  C1RLPS    = C1 Reboiler Low-Pressure Steam
+  C2RLPS    = C2 Reboiler Low-Pressure Steam
+  PUMP1EL   = PUMP-1 Electricity
+  PUMP2EL   = PUMP-2 Electricity
+  PUMP3EL   = PUMP-3 Electricity
+
+IMPORTANT: Aspen Plus limits utility IDs to **8 characters**.
+
+## List/Get/Remove
+
+  list_utilities()     -- list all
+  get_utility(name)    -- read params
+  remove_utility(name) -- clears UTILITY_ID/COND_UTIL/REB_UTIL, removes node
+
+## WARNING: What Does NOT Work
+
+  set_param('COOLER', 'UTILITY_ID', 'CHW-01')  # corrupts simulation
+  set_value('...TIN', 5)  # state already corrupted, no recovery
 """,
     }
 

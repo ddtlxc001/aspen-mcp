@@ -176,6 +176,11 @@ def tool_add_reaction(
       - PHASE
       - EXPONENT (concentration exponents)
 
+    WARNING: COEF/COEF1 tables may NOT be written correctly.
+    Always verify with get_value() after calling. If empty, fill manually
+    using insert_row + set_label + set_value pattern.
+    See help("reaction-manual") for details.
+
     Args:
         reaction_set: Name of the reaction set (e.g. R-1).
         reaction_no: Reaction number (usually 1).

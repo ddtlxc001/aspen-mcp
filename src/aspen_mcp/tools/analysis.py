@@ -10,6 +10,7 @@ from typing import Any
 
 from ..com_bridge import aspen
 from ..knowledge.convergence import search_failures
+from ._diagnostics import _check_utilities_completeness
 
 
 def _walk(root, *parts):
@@ -405,6 +406,15 @@ def tool_generate_input_summary(file_path: str) -> str:
         return f"Error: {exc}"
 
 
+def tool_readback(file_path: str, mode: int = 0) -> str:
+    """Read back a .bkp file into the current simulation."""
+    try:
+        aspen.call(lambda: aspen._app.Readback(file_path, mode))
+        return f"Readback successful from {file_path}"
+    except Exception as exc:
+        return f"Error: {exc}"
+
+
 def tool_list_tear_streams() -> list[str]:
     """List all tear streams in the simulation (recycle loops)."""
     try:
@@ -566,8 +576,11 @@ def tool_find_incomplete_inputs() -> str:
 
                 results.append("")
 
-            if not results:
+            util_lines = _check_utilities_completeness(tree)
+            if not results and not util_lines:
                 return "All inputs appear complete."
+            if util_lines:
+                results = util_lines + results
             return "Params likely needing input:\n" + "\n".join(results).rstrip("\n\n")
         return aspen.call(impl)
     except Exception as exc:

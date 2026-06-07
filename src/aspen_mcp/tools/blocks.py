@@ -249,6 +249,10 @@ def tool_add_block(name: str, block_type: str) -> str:
                     return f"Error: Cannot create Blocks node"
             blk_elems = blk_node.Elements
             blk_elems.Add(f"{name}!{block_type}")
+            try:
+                aspen._app.Engine.Reinit(1, name)
+            except Exception:
+                pass
             return f"Block '{name}' (type={block_type}) added"
         return aspen.call(impl)
     except Exception as exc:

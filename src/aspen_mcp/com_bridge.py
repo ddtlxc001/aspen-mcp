@@ -21,6 +21,7 @@ import logging
 import queue
 import threading
 import time
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from typing import Any, Callable
 
@@ -141,6 +142,8 @@ class AspenConnection:
     def __init__(self):
         self._app = None
         self._lock = threading.Lock()
+        self._trace_enabled = False
+        self._trace_log: list[dict] = []
 
     # -- internal helpers called only from the COM thread ------------------
 
@@ -173,6 +176,30 @@ class AspenConnection:
         except Exception:
             pass
         self._connect()
+
+
+    # -- trace helpers -------------------------------------------------
+
+    def _log_trace(self, method: str, args: dict, result, error: str = None):
+        if not self._trace_enabled:
+            return
+        self._trace_log.append({
+            "time": datetime.now(timezone.utc).isoformat(),
+            "method": method,
+            "args": args,
+            "result": result,
+            "error": error,
+        })
+
+    def trace_start(self):
+        self._trace_log.clear()
+        self._trace_enabled = True
+        return "Trace started"
+
+    def trace_stop(self) -> list:
+        self._trace_enabled = False
+        log = list(self._trace_log)
+        return log
 
     # -- public API --------------------------------------------------------
 
@@ -276,11 +303,14 @@ class AspenConnection:
         def impl():
             node = _walk(self._app.RootModel(""), *parts)
             if node is None:
+                self._log_trace("set_value", {"parts": list(parts), "value": value}, False, "node not found")
                 return False
             try:
                 node.SetValue(0, value)
+                self._log_trace("set_value", {"parts": list(parts), "value": value}, True)
                 return True
             except Exception as exc:
+                self._log_trace("set_value", {"parts": list(parts), "value": value}, False, str(exc))
                 logger.warning("set_value(%r) failed: %s", parts, exc)
                 return False
         return self.call(impl)
@@ -297,8 +327,9 @@ class AspenConnection:
         def impl():
             node = self._app.RootModel("").FindNode(path)
             if node is None:
+                self._log_trace("set_path_value", {"path": path, "value": value}, False, "node not found")
                 return "Node not found: %s" % path
-            # If node has children and value is a string, try child match first
+            self._log_trace("set_path_value", {"path": path, "value": value, "unit": unit}, "attempting")
             try:
                 if node.Elements.Count > 0 and isinstance(value, str):
                     for i in range(node.Elements.Count):
@@ -306,12 +337,14 @@ class AspenConnection:
                             child = node.Elements(i)
                             if child.Name.upper() == value.upper():
                                 child.SetValue(0, value)
+                                self._log_trace("set_path_value", {"path": path, "value": value}, "OK (child match)")
                                 return "OK"
                         except Exception:
                             pass
             except Exception:
                 pass
             node.SetValue(0, value)
+            self._log_trace("set_path_value", {"path": path, "value": value}, "OK")
             return "OK"
         return self.call(impl)
 
@@ -331,9 +364,11 @@ class AspenConnection:
         return self.call(impl)
 
     def open_file(self, path):
+        self._log_trace("open_file", {"path": path}, "submitted")
         self.call(lambda: self._app.InitFromFile(path))
 
     def close_file(self):
+        self._log_trace("close_file", {}, "submitted")
         # Close on COM thread and always clear the stale reference
         try:
             self.call(lambda: self._app.Close())
@@ -343,6 +378,7 @@ class AspenConnection:
         # Next call() will auto-connect fresh
 
     def save(self, path=None):
+        self._log_trace("save", {"path": path}, "submitted")
         if path:
             self.call(lambda: self._app.SaveAs(path))
         else:
@@ -353,15 +389,18 @@ class AspenConnection:
     _RUN_TIMEOUT_SECONDS = 45
 
     def run(self):
+        self._log_trace("run", {}, "submitted")
         self.call(lambda: self._app.Run2())
 
     def run_async(self):
         self.call(lambda: self._app.Engine.Run())
 
     def reinit(self):
+        self._log_trace("reinit", {}, "submitted")
         self.call(lambda: self._app.Engine.Reinit())
 
     def reinit_and_run(self):
+        self._log_trace("reinit_and_run", {}, "submitted")
         def impl():
             self._app.Engine.Reinit()
             self._app.Run2()
@@ -379,25 +418,35 @@ class AspenConnection:
     def run_script(self, file_path):
         self.call(lambda: self._app.RunScript(file_path))
 
-    def generate_input_summary(self, file_path):
-        self.call(lambda: self._app.Generate(file_path, 0))
+    def generate_input_summary(self, file_path, mode=0):
+        self._log_trace("generate_input_summary", {"file_path": file_path, "mode": mode}, "submitted")
+        self.call(lambda: self._app.Generate(file_path, mode))
+
+    def readback(self, file_path, mode=0):
+        """Read back a .bkp input summary file, merging data into the current simulation."""
+        self._log_trace("readback", {"file_path": file_path, "mode": mode}, "submitted")
+        self.call(lambda: self._app.Readback(file_path, mode))
 
     def set_stream_param(self, stream_name, param, value):
         def impl():
             node = _walk(self._app.RootModel(""), "Data", "Streams", stream_name, "Input", param)
             if node is None:
+                self._log_trace("set_stream_param", {"stream": stream_name, "param": param, "value": value}, False, "node not found")
                 return False
             try:
                 if node.Elements.Count > 0:
                     node.Elements(0).SetValue(0, value)
                 else:
                     node.SetValue(0, value)
+                self._log_trace("set_stream_param", {"stream": stream_name, "param": param, "value": value}, True)
                 return True
             except Exception:
                 try:
                     node.SetValue(0, value)
+                    self._log_trace("set_stream_param", {"stream": stream_name, "param": param, "value": value}, True)
                     return True
-                except Exception:
+                except Exception as exc:
+                    self._log_trace("set_stream_param", {"stream": stream_name, "param": param, "value": value}, False, str(exc))
                     return False
         return self.call(impl)
 
@@ -406,11 +455,14 @@ class AspenConnection:
             node = _walk(self._app.RootModel(""),
                          "Data", "Streams", stream_name, "Input", "FLOW", "MIXED", component)
             if node is None:
+                self._log_trace("set_stream_composition", {"stream": stream_name, "component": component, "flow": flow}, False, "node not found")
                 return False
             try:
                 node.SetValue(0, flow)
+                self._log_trace("set_stream_composition", {"stream": stream_name, "component": component, "flow": flow}, True)
                 return True
-            except Exception:
+            except Exception as exc:
+                self._log_trace("set_stream_composition", {"stream": stream_name, "component": component, "flow": flow}, False, str(exc))
                 return False
         return self.call(impl)
 
@@ -456,6 +508,5 @@ def _walk(root, *parts):
         if node is None:
             return None
     return node
-
 
 aspen = AspenConnection()

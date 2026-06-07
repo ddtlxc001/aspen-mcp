@@ -200,7 +200,7 @@ def tool_run() -> str:
             return feed_ok
         aspen.run()
         report = aspen.call(lambda: _get_convergence_report())
-        result = "Simulation run completed.\n\n" + report
+        result = "Simulation run completed.\n\n" + (report or "")
         warning = _check_all_uncalculated()
         if warning:
             result += "\n\n" + warning
@@ -251,7 +251,7 @@ def tool_reinit_and_run() -> str:
             return feed_ok
         aspen.reinit_and_run()
         report = aspen.call(lambda: _get_convergence_report())
-        result = "Simulation reinitialized and run completed.\n\n" + report
+        result = "Simulation reinitialized and run completed.\n\n" + (report or "")
         warning = _check_all_uncalculated()
         if warning:
             result += "\n\n" + warning

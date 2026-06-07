@@ -1,13 +1,33 @@
+# Virtual environment
 venv/
-aspen_mcp_cache.json
-nul
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
+
+# Build / distribution
+*.egg-info/
+dist/
+build/
+
+# Runtime cache
+aspen_mcp_cache.json
+
+# Simulation files — NEVER commit these
 *.apw
 *.bkp
 *.rep
+
+# Aspen Plus generated temp files
 _*.oro
 _*.vjc
 _*.ehd
+
+# Scratch / local scripts
 tree_explorer.py
+nul
+
+# OS artifacts
+.DS_Store
+Thumbs.db

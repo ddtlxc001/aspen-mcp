@@ -29,9 +29,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ddtlxc/aspen-mcp"
-Repository = "https://github.com/ddtlxc/aspen-mcp"
-Documentation = "https://github.com/ddtlxc/aspen-mcp#readme"
+Homepage = "https://github.com/ddtlxc001/aspen-mcp"
+Repository = "https://github.com/ddtlxc001/aspen-mcp"
+Documentation = "https://github.com/ddtlxc001/aspen-mcp#readme"
 
 [project.scripts]
 aspen-mcp = "aspen_mcp.server:main"

@@ -31,7 +31,7 @@
 ### Installation
 
 ```bash
-git clone https://github.com/ddtlxc/aspen-mcp.git
+git clone https://github.com/ddtlxc001/aspen-mcp.git
 cd aspen-mcp
 python -m venv venv
 venv\Scripts\pip install -e .
@@ -262,7 +262,7 @@ MIT — see [LICENSE](LICENSE).
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/ddtlxc/aspen-mcp.git
+git clone https://github.com/ddtlxc001/aspen-mcp.git
 cd aspen-mcp
 
 # 2. 创建虚拟环境

@@ -52,11 +52,13 @@ Single-stage compressor or turbine for gas compression or expansion.
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'COMP1', 'Compr')`
-2. Type: `set_value(session, aspen_path='\Data\Blocks\COMP1\Input\TYPE', value='ISENTROPIC')`
-3. **OPT_SPEC first**: `set_value(session, aspen_path='\Data\Blocks\COMP1\Input\OPT_SPEC', value='PRES')`
-4. Pressure: `set_value(session, aspen_path='\Data\Blocks\COMP1\Input\PRES', value='30', unit='atm')`
-5. Efficiency: `set_value(session, aspen_path='\Data\Blocks\COMP1\Input\SEFF', value='0.75')`
+```
+add_block("COMP1", "COMPR")
+set_value(r"\Data\Blocks\COMP1\Input\TYPE", "ISENTROPIC")
+set_value(r"\Data\Blocks\COMP1\Input\OPT_SPEC", "PRES")
+set_value(r"\Data\Blocks\COMP1\Input\PRES", 30)
+set_value(r"\Data\Blocks\COMP1\Input\SEFF", 0.75)
+```
 
 ## Gotchas
 

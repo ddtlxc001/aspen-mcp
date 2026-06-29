@@ -38,6 +38,8 @@ Centrifuge model for liquid-solid separation. Supports decanter, disc, and pushe
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'CTF1', 'Cfuge')`
-2. Type: `set_value(session, aspen_path='\Data\Blocks\CTF1\Input\TYPE', value='DECANTER')`
-3. Set geometry and operating speed.
+```
+add_block("CTF1", "CFUGE")
+set_value(r"\Data\Blocks\CTF1\Input\TYPE", "DECANTER")
+```
+

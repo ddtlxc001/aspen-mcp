@@ -33,9 +33,11 @@ Multi-stage counter-current decantation (washing) model. Separates solids from l
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'CCD1', 'CCD')`
-2. Stages: `set_value(session, aspen_path='\Data\Blocks\CCD1\Input\NSTAGE', value='5')`
-3. Pressure: `set_value(session, aspen_path='\Data\Blocks\CCD1\Input\PRES', value='1', unit='atm')`
+```
+add_block("CCD1", "CCD")
+set_value(r"\Data\Blocks\CCD1\Input\NSTAGE", 5)
+set_value(r"\Data\Blocks\CCD1\Input\PRES", 1)
+```
 
 ## Gotchas
 

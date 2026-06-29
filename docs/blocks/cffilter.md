@@ -48,6 +48,7 @@ Crossflow (tangential flow) membrane filtration model for liquid-solid separatio
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'CF1', 'CfFilter')`
-2. Set model type and mode.
-3. Specify membrane geometry or separation splits.
+```
+add_block("CF1", "CFFILTER")
+```
+

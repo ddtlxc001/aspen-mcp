@@ -43,6 +43,7 @@ Particle size classifier for separating solids by size, velocity, or density. Su
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'CL1', 'Classifier')`
-2. Method and model selection.
-3. Set cut size or cut velocity and sharpness.
+```
+add_block("CL1", "CLASSIFIER")
+```
+

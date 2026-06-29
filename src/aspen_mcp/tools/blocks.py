@@ -140,20 +140,12 @@ def tool_set_param(block_name: str, param: str, value: str | float) -> str:
                         except Exception:
                             pass
 
-            # Try to read unit info (non-critical)
+            # Show global unit set for context
             context = ""
             try:
-                i3 = node.AttributeValue(3)   # unit group code
-                i8 = node.AttributeValue(8)   # max
-                i9 = node.AttributeValue(9)   # min
-                unit_map = {5: "bar", 10: "kPa", 4: "degC", 3: "Gcal/hr",
-                            18: "kW", 7: "m", 1: "m3/hr",
-                            20: "F", 21: "psia"}
-                unit = unit_map.get(i3, "")
-                if unit:
-                    context = f" [{unit}]"
-                    if i9 is not None and i8 is not None:
-                        context += f" range=({i9}, {i8})"
+                us = walk(tree, "Data", "Setup", "Global", "Input", "GLOBDATASET")
+                if us is not None and us.Value:
+                    context = f" (unit set: {us.Value})"
             except Exception:
                 pass
 

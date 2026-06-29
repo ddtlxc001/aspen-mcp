@@ -170,22 +170,15 @@ def tool_set_stream_param(stream_name: str, param: str, value: float, basis: str
         ok = aspen.set_stream_param(stream_name, param, value)
         if ok:
             msg = f"Stream '{stream_name}' {param} = {value}"
-            # Try to read unit info from the node
+            # Show global unit set for context
             try:
-                def read_stream_unit():
+                def read_unit_set():
                     tree = aspen._app.RootModel("")
-                    node = walk(tree, "Data", "Streams", stream_name, "Input", param)
-                    if node is not None:
-                        try:
-                            u = node.UnitString
-                            if u:
-                                return str(u)
-                        except:
-                            pass
-                    return ""
-                unit_str = aspen.call(read_stream_unit)
-                if unit_str:
-                    msg += f" [{unit_str}]"
+                    us = walk(tree, "Data", "Setup", "Global", "Input", "GLOBDATASET")
+                    return str(us.Value) if us is not None and us.Value else ""
+                us_str = aspen.call(read_unit_set)
+                if us_str:
+                    msg += f" (unit set: {us_str})"
             except Exception:
                 pass
             if basis:

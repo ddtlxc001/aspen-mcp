@@ -82,7 +82,7 @@ args    = ["-m", "aspen_mcp.server"]
 | 工具 | 说明 |
 |---|---|
 | `open_file(path)` | 打开 `.apw` 文件 |
-| `new_simulation()` | **创建空白新模拟（复制纯净模板到临时文件，避开 InitNew COM 稳定性问题）** |
+| `new_simulation()` | **创建空白新模拟（使用 Aspen InitNew()）** |
 | `close_file()` | 关闭当前文件 |
 | `run()` | 运行模拟（同步） |
 | `run_async()` | 异步运行 |

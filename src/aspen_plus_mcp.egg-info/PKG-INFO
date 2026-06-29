@@ -1,9 +1,0 @@
-Metadata-Version: 2.4
-Name: aspen-plus-mcp
-Version: 1.0.0
-Summary: MCP server for Aspen Plus process simulation — talk to Aspen Plus in natural language
-Requires-Python: >=3.10
-License-File: LICENSE
-Requires-Dist: fastmcp>=1.0.0
-Requires-Dist: pywin32>=306
-Dynamic: license-file

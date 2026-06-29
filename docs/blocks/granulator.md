@@ -36,6 +36,6 @@ Fluidized bed granulation model for particle growth through layering or agglomer
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'GR1', 'Granulator')`
+1. Place: `add_block("GR1", "Granulator")`
 2. Model and growth model selection.
 3. Set bed mass and operating conditions.

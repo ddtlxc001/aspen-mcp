@@ -39,7 +39,7 @@ Fluidized bed reactor with detailed hydrodynamic modeling (bubble phase, emulsio
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'FB1', 'Fluidbed')`
+1. Place: `add_block("FB1", "Fluidbed")`
 2. Geometry: set HEIGHT and DIAM.
 3. Set bed mass or bed pressure drop.
 4. Configure particle properties and reactions.

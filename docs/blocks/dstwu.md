@@ -48,14 +48,14 @@ Winn-Underwood-Gilliland shortcut distillation method. Good for quick estimates 
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'D1', 'DSTWU')`
-2. Light key: `set_value(session, aspen_path='\Data\Blocks\D1\Input\LIGHTKEY', value='BENZENE')`
-3. Heavy key: `set_value(session, aspen_path='\Data\Blocks\D1\Input\HEAVYKEY', value='TOLUENE')`
-4. Light key recovery: `set_value(session, aspen_path='\Data\Blocks\D1\Input\RECOVL', value='0.99')`
-5. Heavy key recovery: `set_value(session, aspen_path='\Data\Blocks\D1\Input\RECOVH', value='0.99')`
-6. Condenser pressure: `set_value(session, aspen_path='\Data\Blocks\D1\Input\PTOP', value='1', unit='atm')`
-7. Reboiler pressure: `set_value(session, aspen_path='\Data\Blocks\D1\Input\PBOT', value='1.2', unit='atm')`
-8. Reflux ratio: `set_value(session, aspen_path='\Data\Blocks\D1\Input\RR', value='1.5')`
+1. Place: `add_block("D1", "DSTWU")`
+2. Light key: `set_value(r"\\Data\Blocks\D1\Input\LIGHTKEY", "BENZENE")`
+3. Heavy key: `set_value(r"\\Data\Blocks\D1\Input\HEAVYKEY", "TOLUENE")`
+4. Light key recovery: `set_value(r"\\Data\Blocks\D1\Input\RECOVL", "0.99")`
+5. Heavy key recovery: `set_value(r"\\Data\Blocks\D1\Input\RECOVH", "0.99")`
+6. Condenser pressure: `set_value(r"\\Data\Blocks\D1\Input\PTOP", 1, "atm")`
+7. Reboiler pressure: `set_value(r"\\Data\Blocks\D1\Input\PBOT", 1.2, "atm")`
+8. Reflux ratio: `set_value(r"\\Data\Blocks\D1\Input\RR", "1.5")`
 
 ## Gotchas
 

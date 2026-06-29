@@ -39,9 +39,9 @@ Equilibrium reactor that minimizes Gibbs free energy to determine product compos
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'R1', 'RGibbs')`
-2. Temperature: `set_value(session, aspen_path='\Data\Blocks\R1\Input\TEMP', value='1000', unit='C')`
-3. Pressure: `set_value(session, aspen_path='\Data\Blocks\R1\Input\PRES', value='1', unit='atm')`
+1. Place: `add_block("R1", "RGibbs")`
+2. Temperature: `set_value(r"\\Data\Blocks\R1\Input\TEMP", 1000, "C")`
+3. Pressure: `set_value(r"\\Data\Blocks\R1\Input\PRES", 1, "atm")`
 
 ## Gotchas
 

@@ -39,6 +39,6 @@ Fabric filter (baghouse) for removing particulate matter from gas streams.
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'BH1', 'FabFl')`
+1. Place: `add_block("BH1", "FabFl")`
 2. Set model and mode.
 3. Specify bag geometry and operating conditions.

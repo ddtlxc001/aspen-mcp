@@ -39,6 +39,6 @@ Crushes or grinds solid particles to reduce particle size. Supports jaw, gyrator
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'CR1', 'Crusher')`
-2. Type: `set_value(session, aspen_path='\Data\Blocks\CR1\Input\TYPE', value='JAW')`
+1. Place: `add_block("CR1", "Crusher")`
+2. Type: `set_value(r"\\Data\Blocks\CR1\Input\TYPE", "JAW")`
 3. Set maximum particle diameter or power spec.

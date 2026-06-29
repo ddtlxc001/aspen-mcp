@@ -34,12 +34,12 @@ Edmister shortcut distillation model. Simpler than DSTWU — requires number of 
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'D1', 'Distl')`
-2. Stages: `set_value(session, aspen_path='\Data\Blocks\D1\Input\NSTAGE', value='20')`
-3. Feed stage: `set_value(session, aspen_path='\Data\Blocks\D1\Input\FEED_LOC', value='10')`
-4. Reflux ratio: `set_value(session, aspen_path='\Data\Blocks\D1\Input\RR', value='2')`
-5. D/F ratio: `set_value(session, aspen_path='\Data\Blocks\D1\Input\D_F', value='0.5')`
-6. Pressure: `set_value(session, aspen_path='\Data\Blocks\D1\Input\PTOP', value='1', unit='atm')`
+1. Place: `add_block("D1", "Distl")`
+2. Stages: `set_value(r"\\Data\Blocks\D1\Input\NSTAGE", "20")`
+3. Feed stage: `set_value(r"\\Data\Blocks\D1\Input\FEED_LOC", "10")`
+4. Reflux ratio: `set_value(r"\\Data\Blocks\D1\Input\RR", "2")`
+5. D/F ratio: `set_value(r"\\Data\Blocks\D1\Input\D_F", "0.5")`
+6. Pressure: `set_value(r"\\Data\Blocks\D1\Input\PTOP", 1, "atm")`
 
 ## Gotchas
 

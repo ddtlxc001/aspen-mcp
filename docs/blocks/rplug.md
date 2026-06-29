@@ -1,3 +1,5 @@
+> **Note:** Code examples in this file reference internal COM tree operations (`insert_row`, `set_label`, etc.) — not the user-facing MCP tools. See the main README for the MCP tool interface.
+
 # RPlug (Plug Flow Reactor)
 
 Tubular plug flow reactor with rigorous kinetics. Requires an external reaction set (POWERLAW or LHHW).
@@ -61,15 +63,15 @@ set_value(session, aspen_path='\Data\Blocks\R1\Input\RXN_ID\#0', value='RXN1')
 
 ## Typical Setup
 
-1. Place block: `place_block(session, 'R1', 'RPlug')`
-2. Set type: `set_value(session, aspen_path='\Data\Blocks\R1\Input\TYPE', value='ADIABATIC')`
-3. Set length: `set_value(session, aspen_path='\Data\Blocks\R1\Input\LENGTH', value='12', unit='meter')`
-4. Set diameter: `set_value(session, aspen_path='\Data\Blocks\R1\Input\DIAM', value='1', unit='meter')`
+1. Place block: `add_block("R1", "RPlug")`
+2. Set type: `set_value(r"\\Data\Blocks\R1\Input\TYPE", "ADIABATIC")`
+3. Set length: `set_value(r"\\Data\Blocks\R1\Input\LENGTH", 12, "meter")`
+4. Set diameter: `set_value(r"\\Data\Blocks\R1\Input\DIAM", 1, "meter")`
 5. Set catalyst: `set_value(session, ...\CAT_PRESENT', value='YES')`, then `BED_VOIDAGE`, `CAT_RHO`, `DIA_PART`, `SPHERICITY`
-6. Create reaction set: `add_reaction_set(session, 'RXN1', 'POWERLAW')`
-7. Add reaction: `add_reaction(session, 'RXN1', 1, reactants={...}, products={...}, phase='V')`
-8. Set kinetics: `set_value(session, aspen_path='\Data\Reactions\Reactions\RXN1\Input\PRE_EXP\1', value='51.55')`
-9. Assign to block: `insert_row(session, '\Data\Blocks\R1\Input\RXN_ID')` then `set_value(...\RXN_ID\#0', value='RXN1')`
+6. Create reaction set: `add_reaction_set("RXN1", "POWERLAW")`
+7. Add reaction: `add_reaction("RXN1", 1, ...)`
+8. Set kinetics: `set_value(r"\\Data\Reactions\Reactions\RXN1\Input\PRE_EXP\1", "51.55")`
+9. Assign to block: `# Internal: insert_row at \Data\Blocks\R1\Input\RXN_ID` then `set_value(...\RXN_ID\#0', value='RXN1')`
 
 ## Gotchas
 

@@ -50,8 +50,8 @@ Rigorous two-stream heat exchanger with separate hot and cold sides. Supports de
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'HX1', 'HeatX')`
-2. Mode: `set_value(session, aspen_path='\Data\Blocks\HX1\Input\CALC_MODE', value='DESIGN')`
+1. Place: `add_block("HX1", "HeatX")`
+2. Mode: `set_value(r"\\Data\Blocks\HX1\Input\CALC_MODE", "DESIGN")`
 3. Connect hot and cold side streams.
 4. Set spec as needed (e.g. duty, outlet temp, or area depending on mode).
 

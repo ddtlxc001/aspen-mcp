@@ -40,6 +40,6 @@ Cyclone separator for removing solid particles from a gas stream using centrifug
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'CYC1', 'Cyclone')`
+1. Place: `add_block("CYC1", "Cyclone")`
 2. Mode and method selection.
 3. Set geometry or desired efficiency/pressure drop.

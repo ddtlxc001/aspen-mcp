@@ -38,9 +38,9 @@ Three-outlet flash separator for vapor–liquid–liquid systems. Produces one v
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'F1', 'Flash3')`
-2. Temperature: `set_value(session, aspen_path='\Data\Blocks\F1\Input\TEMP', value='25', unit='C')`
-3. Pressure: `set_value(session, aspen_path='\Data\Blocks\F1\Input\PRES', value='1', unit='atm')`
+1. Place: `add_block("F1", "Flash3")`
+2. Temperature: `set_value(r"\\Data\Blocks\F1\Input\TEMP", 25, "C")`
+3. Pressure: `set_value(r"\\Data\Blocks\F1\Input\PRES", 1, "atm")`
 
 ## Gotchas
 

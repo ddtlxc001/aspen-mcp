@@ -1,3 +1,5 @@
+> **Note:** Code examples in this file reference internal COM tree operations (`insert_row`, `set_label`, etc.) — not the user-facing MCP tools. See the main README for the MCP tool interface.
+
 # RStoic (Stoichiometric Reactor)
 
 Reactor with known stoichiometry and fractional conversion. No kinetics needed — specify reactions and conversions directly via internal tables.
@@ -99,9 +101,9 @@ set_value(session, aspen_path='\Data\Blocks\R1\Input\COEF1\1\WATER\MIXED', value
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'R1', 'RStoic')`
-2. Temperature: `set_value(session, aspen_path='\Data\Blocks\R1\Input\TEMP', value='80', unit='C')`
-3. Pressure: `set_value(session, aspen_path='\Data\Blocks\R1\Input\PRES', value='1', unit='atm')`
+1. Place: `add_block("R1", "RStoic")`
+2. Temperature: `set_value(r"\\Data\Blocks\R1\Input\TEMP", 80, "C")`
+3. Pressure: `set_value(r"\\Data\Blocks\R1\Input\PRES", 1, "atm")`
 4. Set stoichiometry and conversion following the steps above.
 
 ## Gotchas

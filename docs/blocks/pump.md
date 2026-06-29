@@ -44,10 +44,10 @@ Liquid pump for pressure increase. For gas compression, use Compr instead.
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'P1', 'Pump')`
-2. Spec type: `set_value(session, aspen_path='\Data\Blocks\P1\Input\OPT_SPEC', value='PRES')`
-3. Pressure: `set_value(session, aspen_path='\Data\Blocks\P1\Input\PRES', value='5', unit='atm')`
-4. Efficiency: `set_value(session, aspen_path='\Data\Blocks\P1\Input\EFF', value='0.75')`
+1. Place: `add_block("P1", "Pump")`
+2. Spec type: `set_value(r"\\Data\Blocks\P1\Input\OPT_SPEC", "PRES")`
+3. Pressure: `set_value(r"\\Data\Blocks\P1\Input\PRES", 5, "atm")`
+4. Efficiency: `set_value(r"\\Data\Blocks\P1\Input\EFF", "0.75")`
 
 ## Gotchas
 

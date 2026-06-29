@@ -107,9 +107,9 @@ Advanced files cover property overrides, electrolyte/free-water settings, EO mod
 ## How to Place a Block
 
 ```
-place_block(session, block_name='B1', block_type='RadFrac')
+add_block("B1", "RadFrac")
 ```
 Or with generic tool:
 ```
-add_element(session, '\Data\Blocks', 'B1!RadFrac')
+add_element(session, '\Data\Blocks", "B1!RadFrac')
 ```

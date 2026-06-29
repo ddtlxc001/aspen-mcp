@@ -1,3 +1,5 @@
+> **Note:** Code examples in this file reference internal COM tree operations (`insert_row`, `set_label`, etc.) — not the user-facing MCP tools. See the main README for the MCP tool interface.
+
 # REquil (Equilibrium Reactor)
 
 Chemical and phase equilibrium reactor with specified equilibrium reactions. Faster than RGibbs when you know which reactions occur.
@@ -78,15 +80,15 @@ set_value(session, aspen_path='\Data\Blocks\R3\Input\COEF1\1\WATER', value='1')
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'R3', 'REquil')`
-2. Temperature: `set_value(session, aspen_path='\Data\Blocks\R3\Input\TEMP', value='80', unit='C')`
-3. Pressure: `set_value(session, aspen_path='\Data\Blocks\R3\Input\PRES', value='1', unit='atm')`
+1. Place: `add_block("R3", "REquil")`
+2. Temperature: `set_value(r"\\Data\Blocks\R3\Input\TEMP", 80, "C")`
+3. Pressure: `set_value(r"\\Data\Blocks\R3\Input\PRES", 1, "atm")`
 4. Set stoichiometry following the steps above.
 
 ## Gotchas
 
 - REquil does **NOT** use external reaction sets — stoichiometry is set via internal COEF/COEF1 tables.
-- Unlike RStoic, REquil's COEF path is `COEF\{rxn}\{comp}` (1D per reaction) — no MIXED substream dimension.
+- Unlike RStoic, REquil"s COEF path is `COEF\{rxn}\{comp}` (1D per reaction) — no MIXED substream dimension.
 - COEF1 is auto-created when COEF reaction row is inserted.
 - No CONV (conversion) needed — REquil calculates equilibrium composition automatically.
 - Has two output ports: V (vapor) and L (liquid), unlike RStoic which has a single P (product).

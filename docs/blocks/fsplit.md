@@ -33,9 +33,9 @@ Splits one inlet stream into multiple outlet streams by fraction. All outlets ha
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'SP1', 'FSplit')`
+1. Place: `add_block("SP1", "FSplit")`
 2. Connect multiple outlet streams.
-3. Set fractions: `set_value(session, aspen_path='\Data\Blocks\SP1\Input\FRAC\S2', value='0.3')`
+3. Set fractions: `set_value(r"\\Data\Blocks\SP1\Input\FRAC\S2", "0.3")`
 4. Leave one stream unspecified (it gets the balance).
 
 ## Gotchas

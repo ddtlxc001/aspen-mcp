@@ -34,9 +34,9 @@ Combines multiple inlet streams into a single outlet stream. Performs an adiabat
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'MIX1', 'Mixer')`
+1. Place: `add_block("MIX1", "Mixer")`
 2. Connect inlet streams — no additional configuration needed.
-3. Optionally set outlet pressure: `set_value(session, aspen_path='\Data\Blocks\MIX1\Input\PRES', value='2', unit='atm')`
+3. Optionally set outlet pressure: `set_value(r"\\Data\Blocks\MIX1\Input\PRES", 2, "atm")`
 
 ## Gotchas
 

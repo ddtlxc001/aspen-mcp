@@ -1,3 +1,5 @@
+> **Note:** Code examples in this file reference internal COM tree operations (`insert_row`, `set_label`, etc.) — not the user-facing MCP tools. See the main README for the MCP tool interface.
+
 # RadFrac — Advanced
 
 See [common-advanced.md](common-advanced.md) for property method override, electrolyte, free-water, EO, utility, and CO2e tracking paths shared by all blocks.
@@ -6,7 +8,7 @@ See [common-advanced.md](common-advanced.md) for property method override, elect
 
 When the system contains immiscible liquids (e.g., water + organic), enable 3-phase mode:
 
-1. Set number of phases: `set_value(session, aspen_path='\Data\Blocks\COL1\Input\NO_PHASE', value='3')`
+1. Set number of phases: `set_value(r"\\Data\Blocks\COL1\Input\NO_PHASE", "3")`
 2. Set stage range to test for two liquid phases (table node):
    ```
    insert_row(session, '\Data\Blocks\COL1\Input\TRAY2')
@@ -57,9 +59,9 @@ Column Internals allow hydraulic sizing and rating of trays or packings. They re
 
 ### Setup Steps
 
-1. Run simulation first (equilibrium): `run_simulation(session)`
-2. Add Column Internal: `add_element(session, '\Data\Blocks\{name}\Subobjects\Column Internals', 'INT-1')`
-3. Add Sections: `add_element(session, '\Data\Blocks\{name}\Subobjects\Column Internals\INT-1\Subobjects\Sections', 'CS-1')`
+1. Run simulation first (equilibrium): `reinit_and_run()`
+2. Add Column Internal: `# Internal: add_element via COM tree at \Data\Blocks\{name}\Subobjects\Column Internals with name INT-1`
+3. Add Sections: `# Internal: add_element via COM tree at \Data\Blocks\{name}\Subobjects\Column Internals\INT-1\Subobjects\Sections with name CS-1`
 4. Set section stage range and properties (see paths below)
 
 ### Rate-Based Setup
@@ -68,10 +70,10 @@ Rating mode requires a diameter value. To get it automatically, first run with I
 
 1. Run simulation (equilibrium) with `INTER-SIZING` to calculate diameters
 2. Switch to rating + rate-based:
-   - `set_value(session, aspen_path='\Data\Blocks\{name}\Input\CALC_MODE', value='RIG-RATE')`
-   - `set_value(session, aspen_path='...\CA_SIZING\{int}\{sec}', value='RATING')` for each section
-   - `set_value(session, aspen_path='...\CA_RATE_BASE\{int}\{sec}', value='YES')` for each section
-3. Run simulation: `run_simulation(session)`
+   - `set_value(r"\\Data\Blocks\{name}\Input\CALC_MODE", "RIG-RATE")`
+   - `set_value(r"\...\CA_SIZING\{int}\{sec}", "RATING")` for each section
+   - `set_value(r"\...\CA_RATE_BASE\{int}\{sec}", "YES")` for each section
+3. Run simulation: `reinit_and_run()`
 
 > **Important:** `RATING` mode requires `CA_DIAM` to have a value. If you add internals directly as `RATING` without running `INTER-SIZING` first, the diameter will be empty and the simulation will fail. Either run sizing first or set `CA_DIAM` manually.
 
@@ -105,10 +107,10 @@ Example: `\Data\Blocks\COL1\Subobjects\Column Internals\INT-1\Input\CA_STAGE1\IN
 
 ### Listing & Removing
 
-- List internals: `list_elements(session, '\Data\Blocks\{name}\Subobjects\Column Internals')`
-- List sections: `list_elements(session, '\Data\Blocks\{name}\Subobjects\Column Internals\{int}\Subobjects\Sections')`
-- Remove section: `remove_element(session, '...\Sections', 'CS-1')`
-- Remove internal: `remove_element(session, '...\Column Internals', 'INT-1')`
+- List internals: `# Internal: list_elements at \Data\Blocks\{name}\Subobjects\Column Internals`
+- List sections: `# Internal: list_elements at \Data\Blocks\{name}\Subobjects\Column Internals\{int}\Subobjects\Sections`
+- Remove section: `# Internal: remove_element at ...\Sections, name=CS-1`
+- Remove internal: `# Internal: remove_element at ...\Column Internals, name=INT-1`
 
 ## Side Draws (Side Product)
 
@@ -116,8 +118,8 @@ RadFrac supports liquid or vapor side draws from intermediate stages via the SP(
 
 ### Setup Steps
 
-1. Place a new stream: `place_stream(session, 'SIDEDRAW', 'MATERIAL')`
-2. Connect to SP(OUT): `connect_stream(session, stream_name='SIDEDRAW', block_name='COL1', port_name='SP(OUT)', block_type='RadFrac')`
+1. Place a new stream: `add_stream("SIDEDRAW")`
+2. Connect to SP(OUT): `connect_port("COL1", "SP(OUT)", "SIDEDRAW")`
 3. Set the draw stage, flow rate, and phase:
 
 | Path | Type | Description |

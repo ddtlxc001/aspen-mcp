@@ -40,6 +40,6 @@ Electrostatic precipitator for removing fine particles from gas streams using el
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'ESP1', 'ESP')`
+1. Place: `add_block("ESP1", "ESP")`
 2. Type and mode selection.
 3. Set geometry or efficiency target.

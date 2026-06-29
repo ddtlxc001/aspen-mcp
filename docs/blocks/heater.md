@@ -42,9 +42,9 @@ Simple heater or cooler. Specify outlet conditions or heat duty to determine the
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'H1', 'Heater')`
-2. Temperature: `set_value(session, aspen_path='\Data\Blocks\H1\Input\TEMP', value='40', unit='C')`
-3. Pressure: `set_value(session, aspen_path='\Data\Blocks\H1\Input\PRES', value='1.5', unit='atm')`
+1. Place: `add_block("H1", "Heater")`
+2. Temperature: `set_value(r"\\Data\Blocks\H1\Input\TEMP", 40, "C")`
+3. Pressure: `set_value(r"\\Data\Blocks\H1\Input\PRES", 1.5, "atm")`
 
 ## Gotchas
 

@@ -29,8 +29,8 @@ Rigorous multi-stage liquid-liquid extraction column.
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'EXT1', 'Extract')`
-2. Stages: `set_value(session, aspen_path='\Data\Blocks\EXT1\Input\NSTAGE', value='10')`
+1. Place: `add_block("EXT1", "Extract")`
+2. Stages: `set_value(r"\\Data\Blocks\EXT1\Input\NSTAGE", "10")`
 3. Connect solvent and feed streams to appropriate stages.
 
 ## Gotchas

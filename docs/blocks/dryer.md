@@ -42,6 +42,6 @@ Drying model for removing moisture from solids. Supports convective dryers and s
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'DR1', 'Dryer')`
+1. Place: `add_block("DR1", "Dryer")`
 2. Dryer type and flow direction.
 3. Set geometry and operating conditions.

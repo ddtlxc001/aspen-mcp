@@ -43,10 +43,10 @@ Conceptual distillation column that estimates separation performance using short
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'CS1', 'ConSep')`
-2. Key components: `set_value(session, aspen_path='\Data\Blocks\CS1\Input\SELCOMP1', value='BENZENE')`
-3. Recoveries: `set_value(session, aspen_path='\Data\Blocks\CS1\Input\DISTRECO1', value='0.99')`
-4. Pressure: `set_value(session, aspen_path='\Data\Blocks\CS1\Input\P_SPEC', value='1', unit='atm')`
+1. Place: `add_block("CS1", "ConSep")`
+2. Key components: `set_value(r"\\Data\Blocks\CS1\Input\SELCOMP1", "BENZENE")`
+3. Recoveries: `set_value(r"\\Data\Blocks\CS1\Input\DISTRECO1", "0.99")`
+4. Pressure: `set_value(r"\\Data\Blocks\CS1\Input\P_SPEC", 1, "atm")`
 
 ## Gotchas
 

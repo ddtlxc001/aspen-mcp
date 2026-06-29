@@ -1,3 +1,5 @@
+> **Note:** Code examples in this file reference internal COM tree operations (`insert_row`, `set_label`, etc.) — not the user-facing MCP tools. See the main README for the MCP tool interface.
+
 # RCSTR (Continuous Stirred Tank Reactor)
 
 Kinetic reactor with perfect mixing. Requires an external reaction set with kinetic parameters.
@@ -54,14 +56,14 @@ set_value(session, aspen_path='\Data\Blocks\R1\Input\RXN_ID\#0', value='CRACKING
 
 ## Typical Setup
 
-1. Place block: `place_block(session, 'R1', 'RCSTR')`
-2. Set temperature: `set_value(session, aspen_path='\Data\Blocks\R1\Input\TEMP', value='850', unit='C')`
-3. Set pressure: `set_value(session, aspen_path='\Data\Blocks\R1\Input\PRES', value='1.7', unit='atm')`
-4. Set volume: `set_value(session, aspen_path='\Data\Blocks\R1\Input\VOL', value='10')`
-5. Create reaction set: `add_reaction_set(session, 'RXN1', 'POWERLAW')`
-6. Add reaction: `add_reaction(session, 'RXN1', 1, reactants={...}, products={...}, phase='V')`
-7. Set kinetics: `set_value(session, aspen_path='\Data\Reactions\Reactions\RXN1\Input\PRE_EXP\1', value='3.6e15')`
-8. Assign to block: `set_value(session, aspen_path='\Data\Blocks\R1\Input\RXN_ID\#0', value='RXN1')`
+1. Place block: `add_block("R1", "RCSTR")`
+2. Set temperature: `set_value(r"\\Data\Blocks\R1\Input\TEMP", 850, "C")`
+3. Set pressure: `set_value(r"\\Data\Blocks\R1\Input\PRES", 1.7, "atm")`
+4. Set volume: `set_value(r"\\Data\Blocks\R1\Input\VOL", "10")`
+5. Create reaction set: `add_reaction_set("RXN1", "POWERLAW")`
+6. Add reaction: `add_reaction("RXN1", 1, ...)`
+7. Set kinetics: `set_value(r"\\Data\Reactions\Reactions\RXN1\Input\PRE_EXP\1", "3.6e15")`
+8. Assign to block: `set_value(r"\\Data\Blocks\R1\Input\RXN_ID\#0", "RXN1")`
 
 ## Gotchas
 

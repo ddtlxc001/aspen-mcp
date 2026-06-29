@@ -1,3 +1,5 @@
+> **Note:** Code examples in this file reference internal COM tree operations (`insert_row`, `set_label`, etc.) — not the user-facing MCP tools. See the main README for the MCP tool interface.
+
 # RadFrac (Rigorous Distillation)
 
 Rigorous multi-stage vapor-liquid fractionation column with condenser and reboiler.
@@ -111,9 +113,9 @@ It automatically clears old specs before setting new ones.
 - For absorber configuration (`CONDENSER=NONE`, `REBOILER=NONE`): the bottom gas feed must be placed at stage **N+1** (e.g., stage 11 for a 10-stage absorber). Placing it at stage N will cause `check_inputs` to report incomplete.
 - `WD(OUT)` port (water decant) is not in the standard port definitions. `connect_stream` will fuzzy-match `WD` to `VD` incorrectly. Use `add_element` directly instead:
   ```
-  add_element(session, '\Data\Blocks\COL1\Ports\WD(OUT)', 'STREAM_NAME')
+  add_element(session, '\Data\Blocks\COL1\Ports\WD(OUT)", "STREAM_NAME')
   ```
-  To disconnect, use `remove_element(session, '\Data\Blocks\COL1\Ports\WD(OUT)', 'STREAM_NAME')`.
+  To disconnect, use `# Internal: remove_element at \Data\Blocks\COL1\Ports\WD(OUT), name=STREAM_NAME`.
 - `BLKOPFREWAT` (free-water): once set to `YES`, it cannot be changed back to `NO` due to coupled internal settings. The only way to revert is to `remove_block` and recreate.
 - Columns with immiscible components (e.g., VAM-water, organic-water) require 3-phase (`NO_PHASE=3`) or free-water (`BLKOPFREWAT=YES`) mode. Running in 2-phase mode will cause non-convergence or "COLUMN DRIES UP" errors.
 - Liquid feeds from high-pressure separators may contain dissolved light gases (C₂H₄, CO₂, etc.). Add a Flash2 degassing step before the column, otherwise the dissolved gases will dominate the distillate and cause "column dries up" on stripping stages.

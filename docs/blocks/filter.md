@@ -42,6 +42,6 @@ Vacuum or pressure filter model. Supports drum, belt, and disc filter types with
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'FLT1', 'Filter')`
+1. Place: `add_block("FLT1", "Filter")`
 2. Type and mode selection.
 3. Set geometry and operating conditions.

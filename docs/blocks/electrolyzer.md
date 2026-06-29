@@ -50,10 +50,10 @@ Output paths use the `SharedData` node instead of `Output`:
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'EL1', 'Electrolyzer')`
-2. Cell type: `set_value(session, aspen_path='\Data\Blocks\EL1\Input\CELL_TYPE', value='PEM')`
-3. Stacks: `set_value(session, aspen_path='\Data\Blocks\EL1\Input\NSTACKS', value='1')`
-4. Cells: `set_value(session, aspen_path='\Data\Blocks\EL1\Input\NCELLS', value='100')`
+1. Place: `add_block("EL1", "Electrolyzer")`
+2. Cell type: `set_value(r"\\Data\Blocks\EL1\Input\CELL_TYPE", "PEM")`
+3. Stacks: `set_value(r"\\Data\Blocks\EL1\Input\NSTACKS", "1")`
+4. Cells: `set_value(r"\\Data\Blocks\EL1\Input\NCELLS", "100")`
 5. Current or power spec.
 
 ## Gotchas

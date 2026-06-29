@@ -1,3 +1,5 @@
+> **Note:** Code examples in this file reference internal COM tree operations (`insert_row`, `set_label`, etc.) — not the user-facing MCP tools. See the main README for the MCP tool interface.
+
 # RYield (Yield Reactor)
 
 Reactor where you specify product yields directly. No reaction mechanism or stoichiometry needed.
@@ -69,9 +71,9 @@ set_value(session, aspen_path='\Data\Blocks\R1\Input\MOLE_YIELD\WATER\MIXED', va
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'R1', 'RYield')`
-2. Temperature: `set_value(session, aspen_path='\Data\Blocks\R1\Input\TEMP', value='800', unit='C')`
-3. Pressure: `set_value(session, aspen_path='\Data\Blocks\R1\Input\PRES', value='1', unit='atm')`
+1. Place: `add_block("R1", "RYield")`
+2. Temperature: `set_value(r"\\Data\Blocks\R1\Input\TEMP", 800, "C")`
+3. Pressure: `set_value(r"\\Data\Blocks\R1\Input\PRES", 1, "atm")`
 4. Set yields following the steps above.
 
 ## Gotchas

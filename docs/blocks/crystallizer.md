@@ -40,6 +40,6 @@ Crystallization model for producing solid crystals from solution. Supports cooli
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'CRY1', 'Crystallizer')`
-2. Salt: `set_value(session, aspen_path='\Data\Blocks\CRY1\Input\SALT', value='NACL')`
+1. Place: `add_block("CRY1", "Crystallizer")`
+2. Salt: `set_value(r"\\Data\Blocks\CRY1\Input\SALT", "NACL")`
 3. Temperature or duty spec.

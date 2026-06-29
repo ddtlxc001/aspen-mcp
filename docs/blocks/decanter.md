@@ -37,9 +37,9 @@ Liquid-liquid phase separator. Splits a feed into two immiscible liquid phases (
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'DEC1', 'Decanter')`
-2. Temperature: `set_value(session, aspen_path='\Data\Blocks\DEC1\Input\TEMP', value='25', unit='C')`
-3. Pressure: `set_value(session, aspen_path='\Data\Blocks\DEC1\Input\PRES', value='1', unit='atm')`
+1. Place: `add_block("DEC1", "Decanter")`
+2. Temperature: `set_value(r"\\Data\Blocks\DEC1\Input\TEMP", 25, "C")`
+3. Pressure: `set_value(r"\\Data\Blocks\DEC1\Input\PRES", 1, "atm")`
 
 ## Gotchas
 

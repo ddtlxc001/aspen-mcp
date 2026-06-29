@@ -9,22 +9,13 @@ from __future__ import annotations
 from typing import Any
 
 from ..com_bridge import aspen
+from ._common import walk, ensure_parent
 
 _STREAM_RESULT_KEYS = [
     "RES_TEMP", "RES_PRES", "RES_VFRAC", "RES_MASSFLOW",
     "RES_MOLEFLOW", "RES_VOLFLOW", "MW", "COMPTYPE",
 ]
 _STREAM_META_KEYS = ["SOURCE", "DESTINATION", "FULLSOURCE", "FULLDEST"]
-
-
-def _walk(root, *parts):
-    node = root
-    for p in parts:
-        try:
-            node = node.Elements(p)
-        except Exception:
-            return None
-    return node
 
 
 def _collect_values_on_com(node: Any, max_keys: int = 80) -> dict[str, Any]:
@@ -47,36 +38,6 @@ def _collect_values_on_com(node: Any, max_keys: int = 80) -> dict[str, Any]:
     return data
 
 
-def _ensure_parent(tree, *parts):
-    """Ensure a path exists, creating nodes as needed."""
-    node = tree
-    for p in parts:
-        try:
-            n = node.Elements(p)
-            if n is None:
-                raise Exception("none")
-            node = n
-        except Exception:
-            try:
-                node.Elements.Add(p)
-                node = node.Elements(p)
-            except Exception:
-                name = parts[-1] if len(parts) > 0 else p
-                try:
-                    if name == "Blocks":
-                        node.Elements.Add("_d_!MIXER")
-                        node = node.Elements("Blocks")
-                        node.Elements.Remove("_d_")
-                        return node
-                    elif name == "Streams":
-                        node.Elements.Add("_d_")
-                        node = node.Elements("Streams")
-                        node.Elements.Remove("_d_")
-                        return node
-                except Exception:
-                    pass
-                return None
-    return node
 
 
 def tool_list_all_streams() -> list[str]:
@@ -84,7 +45,7 @@ def tool_list_all_streams() -> list[str]:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            streams_node = _walk(tree, "Data", "Streams")
+            streams_node = walk(tree, "Data", "Streams")
             if streams_node is None:
                 return ["(no streams node)"]
             names = []
@@ -114,7 +75,7 @@ def tool_get_stream(name: str) -> dict[str, Any]:
         def impl():
             result: dict[str, Any] = {"name": name}
             tree = aspen._app.RootModel("")
-            out = _walk(tree, "Data", "Streams", name, "Output")
+            out = walk(tree, "Data", "Streams", name, "Output")
             if out is not None:
                 all_vals = _collect_values_on_com(out)
                 for k in _STREAM_RESULT_KEYS + _STREAM_META_KEYS:
@@ -131,7 +92,7 @@ def tool_get_stream(name: str) -> dict[str, Any]:
             # Read liquid and vapor mole fractions if available
             tree = aspen._app.RootModel("")
             for phase_key, out_key in [("X", "mole_frac_liq"), ("Y", "mole_frac_vap")]:
-                phase_node = _walk(tree, "Data", "Streams", name, "Output", phase_key)
+                phase_node = walk(tree, "Data", "Streams", name, "Output", phase_key)
                 if phase_node is not None:
                     comps = {}
                     for ci in range(100):
@@ -158,11 +119,11 @@ def tool_get_stream_composition_info(name: str) -> dict[str, Any]:
         def impl():
             result: dict[str, Any] = {"stream": name}
             tree = aspen._app.RootModel("")
-            out = _walk(tree, "Data", "Streams", name, "Output")
+            out = walk(tree, "Data", "Streams", name, "Output")
             if out is None:
                 return {"error": f"Stream '{name}' not found"}
             for k in ("COMPTYPE", "MW", "RES_MOLEFLOW", "RES_MASSFLOW", "SOURCE", "DESTINATION"):
-                node = _walk(tree, "Data", "Streams", name, "Output", k)
+                node = walk(tree, "Data", "Streams", name, "Output", k)
                 if node is not None:
                     result[k.lower()] = node.Value
             return result
@@ -213,7 +174,7 @@ def tool_set_stream_param(stream_name: str, param: str, value: float, basis: str
             try:
                 def read_stream_unit():
                     tree = aspen._app.RootModel("")
-                    node = _walk(tree, "Data", "Streams", stream_name, "Input", param)
+                    node = walk(tree, "Data", "Streams", stream_name, "Input", param)
                     if node is not None:
                         try:
                             u = node.UnitString
@@ -261,9 +222,9 @@ def tool_add_stream(name: str) -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            str_node = _walk(tree, "Data", "Streams")
+            str_node = walk(tree, "Data", "Streams")
             if str_node is None:
-                str_node = _ensure_parent(tree, "Data", "Streams")
+                str_node = ensure_parent(tree, "Data", "Streams")
                 if str_node is None:
                     return f"Error: Cannot create Streams node"
             str_node.Elements.Add(name)
@@ -285,40 +246,22 @@ def tool_set_stream_composition_batch(stream_name: str, components: dict[str, fl
         total_flow: Required when basis is a fraction (e.g. MOLE-FRAC).
     """
     try:
-        basis_norm = basis.upper().replace("-", "").replace("_", "")
-        if basis_norm in ("MOLEFLOW", "MOLE"):
-            basis_val = "MOLE-FLOW"
-        elif basis_norm in ("MASSFLOW", "MASS"):
-            basis_val = "MASS-FLOW"
-        elif basis_norm in ("MOLEFRAC", "MOLE-FRACTION"):
-            basis_val = "MOLE-FRAC"
-        elif basis_norm in ("MASSFRAC", "MASS-FRACTION"):
-            basis_val = "MASS-FRAC"
-        else:
+        # Normalise basis name
+        bn = basis.upper().replace("-", "").replace("_", "")
+        valid = {"MOLEFLOW": True, "MOLE": True, "MASSFLOW": True, "MASS": True,
+                 "MOLEFRAC": True, "MOLEFRACTION": True, "MASSFRAC": True, "MASSFRACTION": True}
+        if bn not in valid:
             return f"Invalid basis '{basis}'. Valid: MOLE-FLOW, MASS-FLOW, MOLE-FRAC, MASS-FRAC"
 
-        is_frac = "FRAC" in basis_val
-
-        flow_path = rf"\Data\Streams\{stream_name}\Input\FLOW\MIXED"
-        err = aspen.set_node_attribute(flow_path, 13, basis_val)
-        if err:
-            return f"Error setting BASIS: {err}"
-
+        is_frac = "FRAC" in bn.upper()
         if is_frac and total_flow is None:
-            return f"Error: {basis_val} requires total_flow parameter."
+            return f"Error: {basis} requires total_flow parameter."
 
-        if total_flow is not None:
-            aspen.set_stream_param(stream_name, "TOTAL", total_flow)
-
-        results = []
-        for comp, val in components.items():
-            ok = aspen.set_stream_composition(stream_name, comp, val)
-            results.append(f"{comp}={val}" if ok else f"{comp}=FAILED")
-
-        msg = f"Stream '{stream_name}' composition set (BASIS={basis_val}): {', '.join(results)}"
-        if total_flow is not None:
-            msg += f", total_flow={total_flow}"
-        return msg
+        # Delegate to bridge (now properly implemented)
+        result = aspen.set_stream_composition_batch(
+            stream_name, components, basis, total_flow,
+        )
+        return result
     except Exception as exc:
         return f"Error: {exc}"
 
@@ -328,49 +271,12 @@ def tool_remove_stream(name: str) -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            str_elems = _walk(tree, "Data", "Streams").Elements
+            str_elems = walk(tree, "Data", "Streams").Elements
             str_elems.Remove(name)
             return f"Stream '{name}' removed"
         return aspen.call(impl)
     except Exception as exc:
         return f"Error: {exc}"
-
-
-def _get_block_ports_on_com() -> list[dict] | None:
-    """Return list of {block, name, count, streams} for all block ports (on COM thread)."""
-    tree = aspen._app.RootModel("")
-    blocks_node = _walk(tree, "Data", "Blocks")
-    if blocks_node is None:
-        return None
-    all_ports: list[dict] = []
-    for bi in range(500):
-        try:
-            block = blocks_node.Elements(bi)
-        except Exception:
-            break
-        if block is None:
-            break
-        block_name = block.Name
-        try:
-            ports_node = block.Elements("Ports")
-        except Exception:
-            continue
-        for pi in range(50):
-            try:
-                p = ports_node.Elements(pi)
-            except Exception:
-                break
-            if p is None:
-                break
-            els = p.Elements
-            streams = []
-            for j in range(els.Count):
-                try:
-                    streams.append(els.Item(j).Name)
-                except Exception:
-                    break
-            all_ports.append({"block": block_name, "name": p.Name, "count": els.Count, "streams": streams})
-    return all_ports
 
 
 def _connect_port_on_com(block_name: str, port_name: str, stream_name: str) -> str:
@@ -384,7 +290,7 @@ def _connect_port_on_com(block_name: str, port_name: str, stream_name: str) -> s
     flowsheet. Re-open .apw to refresh visual connections.
     """
     tree = aspen._app.RootModel("")
-    block = _walk(tree, "Data", "Blocks", block_name)
+    block = walk(tree, "Data", "Blocks", block_name)
     if block is None:
         return f"Block '{block_name}' not found"
     try:
@@ -416,39 +322,53 @@ def _connect_port_on_com(block_name: str, port_name: str, stream_name: str) -> s
     return f"Stream '{stream_name}' connected to {block_name}:{port_name}"
 
 
-def tool_connect(source_block: str, dest_block: str, stream_name: str | None = None,
+def tool_connect(source: str, dest_block: str, stream_name: str | None = None,
                     source_port: str | None = None, dest_port: str | None = None) -> str:
-    """Connect source_block to dest_block via an auto-created or specified stream.
+    """Connect two blocks with a stream. mutates=True.
 
-    Args:
-        source_block: Name of the source block (or "FEED" for a feed stream).
-        dest_block: Name of the destination block.
-        stream_name: Auto-generated if not given.
-        source_port: Default "P(OUT)" for blocks. Feed streams have no source port.
-        dest_port: Default "F(IN)" for blocks.
+    Also works when *source* is a stream name (not a block):
+    the existing stream is connected to *dest_block*'s input port.
+
+    Default ports: P(OUT) on source block, F(IN) on dest.
+    Auto-creates stream if not given (name = "source-dest").
+
+    Examples:
+      connect("H1", "F1")                           — heater → flash
+      connect("F1", "GAS", source_port="V(OUT)")    — flash vapor outlet
+      connect("F1", "LIQ", source_port="L(OUT)")    — flash liquid outlet
+      connect("FEED", "H1")                         — feed stream → heater
     """
-    if stream_name is None:
-        stream_name = f"{source_block}-{dest_block}"
-    if source_port is None:
-        source_port = "P(OUT)"
-    if dest_port is None:
-        dest_port = "F(IN)"
-
     try:
         def impl():
-            # Ensure stream exists
             tree = aspen._app.RootModel("")
-            if _walk(tree, "Data", "Streams", stream_name) is None:
-                str_elems = _walk(tree, "Data", "Streams").Elements
-                str_elems.Add(stream_name)
 
-            r1 = _connect_port_on_com(source_block, source_port, stream_name)
+            # ---- detect whether *source* is a block or a stream ----
+            is_block = walk(tree, "Data", "Blocks", source) is not None
+            is_stream = walk(tree, "Data", "Streams", source) is not None
+
+            if not is_block and is_stream:
+                # source is a feed stream → connect to dest only
+                actual_stream = source
+                actual_dest_port = dest_port or "F(IN)"
+                return _connect_port_on_com(dest_block, actual_dest_port, actual_stream)
+
+            # ---- source is a block → normal block-to-block connection ----
+            actual_stream = stream_name or f"{source}-{dest_block}"
+            actual_source_port = source_port or "P(OUT)"
+            actual_dest_port = dest_port or "F(IN)"
+
+            # Ensure stream exists
+            if walk(tree, "Data", "Streams", actual_stream) is None:
+                walk(tree, "Data", "Streams").Elements.Add(actual_stream)
+
+            r1 = _connect_port_on_com(source, actual_source_port, actual_stream)
             if "Error" in r1:
                 return f"Connect failed at source: {r1}"
-            r2 = _connect_port_on_com(dest_block, dest_port, stream_name)
+            r2 = _connect_port_on_com(dest_block, actual_dest_port, actual_stream)
             if "Error" in r2:
                 return f"Connect failed at dest: {r2}"
-            return f"Connected {source_block}:{source_port} --[{stream_name}]--> {dest_block}:{dest_port}"
+            return f"Connected {source}:{actual_source_port} --[{actual_stream}]--> {dest_block}:{actual_dest_port}"
+
         return aspen.call(impl)
     except Exception as exc:
         return f"Error: {exc}"
@@ -459,8 +379,8 @@ def tool_connect_port(block_name: str, port_name: str, stream_name: str) -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            if _walk(tree, "Data", "Streams", stream_name) is None:
-                str_elems = _walk(tree, "Data", "Streams").Elements
+            if walk(tree, "Data", "Streams", stream_name) is None:
+                str_elems = walk(tree, "Data", "Streams").Elements
                 str_elems.Add(stream_name)
             return _connect_port_on_com(block_name, port_name, stream_name)
         return aspen.call(impl)
@@ -479,7 +399,7 @@ def tool_disconnect(stream_name: str) -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            blocks_node = _walk(tree, "Data", "Blocks")
+            blocks_node = walk(tree, "Data", "Blocks")
             if blocks_node is None:
                 return "Error: blocks node not found"
 
@@ -532,7 +452,7 @@ def tool_disconnect(stream_name: str) -> str:
             str_removed = False
             if not failures:
                 try:
-                    str_elems = _walk(tree, "Data", "Streams").Elements
+                    str_elems = walk(tree, "Data", "Streams").Elements
                     str_elems.Remove(stream_name)
                     str_removed = True
                 except Exception:
@@ -561,10 +481,10 @@ def _ensure_blocks_node():
     """Re-create Data/Blocks node if Aspen auto-removed it."""
     def impl():
         tree = aspen._app.RootModel("")
-        data = _walk(tree, "Data")
+        data = walk(tree, "Data")
         if data is None:
             return False
-        blks = _walk(tree, "Data", "Blocks")
+        blks = walk(tree, "Data", "Blocks")
         if blks is not None:
             return True
         try:
@@ -580,7 +500,7 @@ def tool_list_block_ports(block_name: str) -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            block = _walk(tree, "Data", "Blocks", block_name)
+            block = walk(tree, "Data", "Blocks", block_name)
             if block is None:
                 return f"Block '{block_name}' not found"
             try:

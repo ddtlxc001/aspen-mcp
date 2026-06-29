@@ -1,16 +1,7 @@
 """Fill trivial/meaningless active-but-unset params so diagnostics show only what matters."""
 from __future__ import annotations
 from ..com_bridge import aspen
-
-
-def _walk(root, *parts):
-    node = root
-    for p in parts:
-        try:
-            node = node.Elements(p)
-        except Exception:
-            return None
-    return node
+from ._common import walk
 
 
 # Params that are safe to fill — they have NO engineering impact.
@@ -189,7 +180,7 @@ def tool_fill_trivial_params() -> str:
     """
     def impl():
         tree = aspen._app.RootModel("")
-        blks = _walk(tree, "Data", "Blocks")
+        blks = walk(tree, "Data", "Blocks")
         if blks is None:
             return "No Blocks node found"
         
@@ -205,7 +196,7 @@ def tool_fill_trivial_params() -> str:
                 break
             
             bname = b.Name
-            inp = _walk(tree, "Data", "Blocks", bname, "Input")
+            inp = walk(tree, "Data", "Blocks", bname, "Input")
             if inp is None:
                 continue
             

@@ -26,6 +26,7 @@ from .tools.simulation import (
     tool_visible,
     tool_run_script,
     tool_batch_refresh,
+    tool_probe,
 )
 from .tools.streams import (
     tool_list_all_streams,
@@ -56,6 +57,8 @@ from .tools.components import (
     tool_remove_component,
     tool_get_property_method,
     tool_set_property_method,
+    tool_get_unit_set,
+    tool_set_unit_set,
 )
 from .tools.reactions import (
     tool_add_reaction_set,
@@ -63,20 +66,16 @@ from .tools.reactions import (
     tool_add_reaction,
     tool_remove_reaction,
     tool_list_reaction_sets,
-    tool_setup_block_reaction,
 )
 from .tools.analysis import (
-    tool_sensitivity,
     tool_export_report_file,
     tool_diagnose,
     tool_search_convergence_knowledge,
     tool_generate_input_summary,
-    tool_readback,
     tool_find_incomplete_inputs,
     tool_list_tear_streams,
     tool_set_tear_estimate,
     tool_validate_block,
-    tool_probe_f4,
     tool_simulation_warnings,
 )
 from .tools.deep_probe import tool_deep_probe
@@ -86,9 +85,6 @@ from .tools.flowsheet import (
     tool_add_side_duty,
     tool_remove_side_duty,
     tool_configure_fsplit,
-    tool_list_all_ports,
-    cache_block_type,
-    uncache_block_type,
 )
 from .tools.columns import (
     tool_set_column_stages,
@@ -97,21 +93,10 @@ from .tools.columns import (
     tool_set_feed_stage,
     tool_set_product_stage,
     tool_set_column_pressure,
-)
-from .tools.cache_tools import (
-    tool_get_call_log,
-    tool_clear_call_log,
-    tool_get_sensitivity_history,
-    tool_clear_sensitivity_cache,
+    tool_set_column_specs,
 )
 from .tools.sensitivity_advanced import (
-    tool_sensitivity_advanced,
-)
-from .tools.help_content import get_help
-from .tools.paths import (
-    tool_get_value,
-    tool_set_value,
-    tool_insert_row,
+    tool_sensitivity,
 )
 from .tools.utilities import (
     tool_add_utility,
@@ -121,6 +106,11 @@ from .tools.utilities import (
     tool_remove_utility,
 )
 
+from .tools.paths import (
+    tool_get_value,
+    tool_set_value,
+)
+
 logging.basicConfig(
     level=logging.WARNING,
     format="%(levelname)s  %(name)s  %(message)s",
@@ -128,14 +118,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("aspen_mcp")
 
-# Initialize COM on the main thread so that COM proxy objects returned
-# from the COM apartment thread can be marshalled correctly.
-try:
-    import pythoncom
-    pythoncom.CoInitialize()
-    logger.info("CoInitialize on main thread")
-except Exception:
-    pass
+# COM initialization handled by bridge/windows.py at import time.
 
 
 def create_server() -> FastMCP:
@@ -145,131 +128,152 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     def status() -> dict:
-        """Get the Aspen Plus connection and engine status."""
+        """获取 Aspen Plus 连接和引擎状态。"""
         return tool_status()
 
     @mcp.tool()
     def probe() -> dict:
         """Diagnose COM state (app, root, tree access)."""
-        try:
-            return aspen.probe()
-        except Exception as exc:
-            return {"error": str(exc)}
+        return tool_probe()
 
     @mcp.tool()
     def open_file(file_path: str) -> str:
-        """Open an Aspen Plus .apw simulation file."""
+        """Open an Aspen Plus .apw simulation file.
+
+        Example: open_file("C:/path/to/simulation.apw")
+
+        Opens the file in the Aspen engine. Call list_all_blocks()
+        and list_all_streams() afterward to verify the topology loaded.
+        """
         return tool_open_file(file_path)
 
     @mcp.tool()
     def close_file() -> str:
-        """Close the currently-open simulation file.
-        
-        After closing, clears the COM reference on the main thread
-        so the next call() auto-reconnects cleanly.
-        """
+        """Close the currently open simulation file. mutates=True."""
         return tool_close_file()
 
     @mcp.tool()
     def run() -> str:
-        """Run the simulation.
+        """Run the simulation. mutates=True.
 
-        Has 30-second timeout — if the engine hangs, it is stopped
-        and a "Timeout:" error is returned.
-        Before running, automatically checks feed streams for
-        TEMP/PRES/composition. After run, checks BLKSTAT/BLKMSG.
+        Auto-checks feed streams for missing TEMP/PRES/composition.
+        30-second timeout — returns error if engine hangs.
+
+        After run, check:
+          get_stream("name")           — stream results (T, P, flow, comp)
+          block_status("name")          — convergence status
+          diagnose(["convergence"])      — failure analysis
         """
         return tool_run()
 
     @mcp.tool()
     def run_async() -> str:
-        """Run the simulation (asynchronous)."""
+        """运行模拟（异步）。"""
         return tool_run_async()
 
     @mcp.tool()
     def save(file_path: str | None = None) -> str:
-        """Save the simulation. Optionally provide a SaveAs path."""
+        """Save the simulation. Optionally provide Save As path.
+
+        save("C:/output.apw")      — save to a new file
+        save()                      — overwrite current file
+        """
         return tool_save(file_path)
 
     @mcp.tool()
     def reinit() -> str:
-        """Reinitialize the simulation (reset results)."""
+        """重新初始化模拟（重置结果）。"""
         return tool_reinit()
 
     @mcp.tool()
     def reinit_and_run() -> str:
-        """Reinitialize then run (with 30s timeout).
+        """Reinitialize (clear results) then run. mutates=True.
 
-        If the simulation hangs, it is stopped automatically
-        and a "Timeout:" error is returned.
-        Before running, automatically checks feed streams for
-        TEMP/PRES/composition. After run, checks BLKSTAT/BLKMSG.
+        Equivalent to reinit() + run(). Preferred over run()
+        when you have changed parameters and need a clean start.
         """
         return tool_reinit_and_run()
 
     @mcp.tool()
     def new_simulation() -> str:
-        """Create a new blank simulation from the built-in template.
+        """Create a blank simulation with 0 components and empty topology.
 
-        Closes any open file first, copies blank template to %%TEMP%%,
-        then opens the copy. Template has 0 components and empty topology.
-        Uses a bundled template so no external files are needed.
+        mutates=True. Creates fresh sim with PENG-ROB property method.
+
+        Typical workflow:
+          new_simulation()
+          add_component("WATER") -> set_property_method("NRTL")
+          add_block("H1","HEATER") -> add_stream("FEED")
+          set_stream_param("FEED","TEMP",25) -> run()
         """
         return tool_new_simulation()
 
     @mcp.tool()
     def stop_simulation() -> str:
-        """Stop the currently running simulation."""
+        """停止当前运行的模拟。"""
         return tool_stop_simulation()
 
     @mcp.tool()
     def visible(show: bool) -> str:
-        """Show or hide the Aspen Plus GUI window."""
+        """显示或隐藏 Aspen Plus GUI 窗口。"""
         return tool_visible(show)
 
     @mcp.tool()
     def run_script(file_path: str) -> str:
-        """Execute a Python script inside Aspen Plus."""
+        """在 Aspen Plus 内部执行 Python 脚本。"""
         return tool_run_script(file_path)
 
     @mcp.tool()
     def batch_refresh(off: bool) -> str:
-        """Disable or re-enable GUI refresh (speed up bulk operations)."""
+        """禁用或启用 GUI 刷新（加速批量操作）。"""
         return tool_batch_refresh(off)
 
     # ── streams ──────────────────────────────────────────────────────────
 
     @mcp.tool()
     def list_all_streams() -> list[str]:
-        """List all stream names in the flowsheet."""
+        """List every stream name in the flowsheet.
+
+        Returns: ["FEED","PRODUCT","RECYCLE",...].
+        Use get_stream("name") for individual results.
+        """
         return tool_list_all_streams()
 
     @mcp.tool()
     def get_stream(name: str) -> dict:
-        """Read stream output properties (temp, pressure, flows, etc.)."""
+        """Read stream results after simulation.
+
+        Example: get_stream("PRODUCT")
+
+        Returns: res_temp, res_pres, res_vfrac, res_massflow,
+        res_moleflow, res_volflow, mw, comptype,
+        mole_frac_liq (liquid composition), mole_frac_vap (vapor).
+        """
         return tool_get_stream(name)
 
     @mcp.tool()
     def get_stream_composition_info(name: str) -> dict:
-        """Get stream composition metadata (COMPTYPE, MW, flows)."""
+        """获取流股组成元数据（COMPTYPE、分子量、流量）。"""
         return tool_get_stream_composition_info(name)
 
     @mcp.tool()
     def set_stream_param(stream_name: str, param: str, value: float, basis: str | None = None) -> str:
-        """Set a stream input parameter (TEMP, PRES, TOTAL, or component with BASIS).
+        """Set a feed-stream input parameter. mutates=True.
 
-        ⚠️  Aspen 物流参数必须通过此工具设置，不能直接用 set_param。
-            自动处理 MIXED 子节点写入逻辑。
+        Examples:
+          set_stream_param("FEED", "TEMP", 25)       — temperature
+          set_stream_param("FEED", "PRES", 1.5)       — pressure
+          set_stream_param("FEED", "TOTAL", 100)      — total molar flow
+          set_stream_param("S1", "VFRAC", 0.0)        — vapor fraction
 
-        Common params: TEMP (温度), PRES (压力), TOTAL (总流量).
-        basis: 可选——MOLE-FLOW, MASS-FLOW, MOLE-FRAC, MASS-FRAC.
-        Unit is determined by the current Unit-Set.
+        Value unit follows the current Unit-Set (METCBAR: C/bar/kmol/hr).
+        For composition, use set_stream_composition_batch.
         """
         return tool_set_stream_param(stream_name, param, value, basis)
 
     @mcp.tool()
     def set_stream_composition(stream_name: str, component: str, flow: float) -> str:
-        """Set a component's molar flow in a stream.
+        """设置某组分的's 摩尔流量。
 
         NOTE: IDs over 8 chars get truncated (PROPYLENE -> PROPYLEN).
         Use list_components() to see actual labels.
@@ -285,7 +289,7 @@ def create_server() -> FastMCP:
     def set_stream_composition_batch(stream_name: str, components: dict[str, float],
                                      basis: str = "MOLE-FLOW",
                                      total_flow: float | None = None) -> str:
-        """Batch-set stream composition with BASIS control and optional total flow.
+        """批量设置流股组成，带 BASIS 控制和可选总流量。
 
         Handles BASIS switching, all components, and total flow in one call.
         Use this instead of calling set_stream_composition repeatedly.
@@ -305,155 +309,233 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     def add_stream(name: str) -> str:
-        """Add a new stream to the flowsheet."""
+        """Add a new stream to the flowsheet. mutates=True.
+
+        add_stream("FEED")     — create a feed stream
+        """
         return tool_add_stream(name)
 
     @mcp.tool()
     def remove_stream(name: str) -> str:
-        """Remove a stream from the flowsheet."""
+        """Remove a stream from the flowsheet. mutates=True.
+
+        Disconnect the stream from all ports first with disconnect().
+        """
         return tool_remove_stream(name)
 
     @mcp.tool()
     def connect(source_block: str, dest_block: str, stream_name: str | None = None,
                   source_port: str | None = None, dest_port: str | None = None) -> str:
-        """Connect source_block to dest_block via an auto-created or specified stream.
+        """Connect two blocks with a stream. mutates=True.
 
-        Auto-creates the stream if it doesn't exist.
-        Default ports: P(OUT) on source, F(IN) on destination.
-        Override with source_port/dest_port for non-standard ports
-        (e.g. V(OUT) for FLASH2 vapor, L(OUT) for FLASH2 liquid).
+        Default ports: P(OUT) on source, F(IN) on dest.
+        Auto-creates stream if not given (name = "source-dest").
+
+        Examples:
+          connect("H1", "F1")                           — heater → flash
+          connect("F1", "GAS", source_port="V(OUT)")    — flash vapor outlet
+          connect("F1", "LIQ", source_port="L(OUT)")    — flash liquid outlet
+          connect("FEED", "H1")                         — feed stream → heater
         """
         return tool_connect(source_block, dest_block, stream_name, source_port, dest_port)
 
     @mcp.tool()
     def connect_port(block_name: str, port_name: str, stream_name: str) -> str:
-        """Connect a stream to a single block port.
+        """Connect a stream to a single block port. mutates=True.
 
-        APPEND mode: does NOT clear port. Multiple streams on same port OK.
-        If stream is already connected, does nothing.
-        NOTE: Re-open .apw to refresh visual connections.
-        Use list_block_ports to see available ports.
+        Examples:
+          connect_port("F1", "V(OUT)", "VAPOR")    — flash vapor
+          connect_port("F1", "L(OUT)", "LIQUID")   — flash liquid
+          connect_port("M1", "F(IN)", "FEED2")     — second mixer feed
+
+        Use list_block_ports("name") to see available ports.
         """
         return tool_connect_port(block_name, port_name, stream_name)
 
     @mcp.tool()
     def disconnect(stream_name: str) -> str:
-        """Disconnect a stream from all ports and remove it.
-        
-        Now uses a snapshot-first algorithm to safely handle partial failures.
-        Scans all connections first, removes from ports one-by-one,
-        and only removes from the Streams collection if all port removals succeeded.
-        This prevents crashes on remove_block() after a failed disconnect.
+        """Disconnect a stream from all ports and remove it. mutates=True.
+
+        disconnect("S1")
+
+        Uses snapshot-first algorithm: scans all connections,
+        removes from ports, then cleans up the Streams collection.
+        Safe to call before remove_block().
         """
         return tool_disconnect(stream_name)
 
     @mcp.tool()
     def list_block_ports(block_name: str) -> str:
-        """List available ports on a block and which streams are connected."""
+        """List available ports on a block and their connected streams.
+
+        list_block_ports("F1")
+          → Ports: F(IN)->[FEED], V(OUT)->[VAPOR], L(OUT)->[LIQUID]
+        """
         return tool_list_block_ports(block_name)
 
     # ── blocks ───────────────────────────────────────────────────────────
 
     @mcp.tool()
     def list_all_blocks() -> list[str]:
-        """List all block names in the flowsheet."""
+        """List every block name in the flowsheet.
+
+        Returns: ["H1","F1","C1","R1",...].
+        Use get_block("name") for individual specifications.
+        """
         return tool_list_all_blocks()
 
     @mcp.tool()
     def get_block(name: str) -> dict:
-        """Read block specification and results."""
+        """Read block specifications and output results.
+
+        get_block("H1") — returns input specs + output values.
+        Use block_status("H1") for convergence status only.
+        """
         return tool_get_block(name)
 
     @mcp.tool()
     def set_param(block_name: str, param: str, value: str | float) -> str:
-        """Set a block parameter value.
+        """Set a block operating parameter. mutates=True.
 
-        Only for block parameters (TEMP, PRES, HEATOPT, etc.).
-        Do NOT use for stream parameters -- use set_stream_param instead.
+        Common params: TEMP, PRES, DUTY, VFRAC, NPHASE.
+
+        Examples:
+          set_param("H1", "TEMP", 150)       -- heater outlet T
+          set_param("H1", "PRES", 5)         -- operating pressure
+          set_param("F1", "TEMP", 80)        -- flash temperature
+          set_param("H1", "DUTY", -500)      -- heat duty (neg=cooling)
+
+        For streams, use set_stream_param. Streams and blocks have
+        separate parameter trees in the Aspen COM object model.
         """
         return tool_set_param(block_name, param, value)
 
     @mcp.tool()
     def add_block(name: str, block_type: str) -> str:
-        """Add a block (HEATER, MIXER, RGIBBS, RPLUG, RCSTR, RSTOIC, etc).
+        """Add a unit operation block. mutates=True.
 
-        RGIBBS: just TEMP+PRES, no RXN_ID needed.
-        RPLUG/RCSTR: use insert_row + set_value for RXN_ID.
-        RStoic: use setup_block_reaction() for block-level stoichiometry.
+        Common types: HEATER, FLASH2, FLASH3, RADFRAC, RPLUG,
+        RGIBBS, RSTOIC, MIXER, FSPLIT, PUMP, COMPR, VALVE, HEATX.
+
+        Examples:
+          add_block("H1", "HEATER")         — heater/cooler
+          add_block("F1", "FLASH2")         — two-phase flash
+          add_block("C1", "RADFRAC")        — distillation column
+          add_block("R1", "RGIBBS")         — Gibbs reactor (no RXN_ID)
+
+        RPLUG/RCSTR require a reaction set ID (RXN_ID).
         """
-        result = tool_add_block(name, block_type)
-        if result.startswith("Block '"):
-            cache_block_type(name, block_type)
-        return result
+        return tool_add_block(name, block_type)
 
     @mcp.tool()
     def remove_block(name: str) -> str:
-        """Remove a block from the flowsheet.
+        """Delete a block from the flowsheet. mutates=True.
 
-        IMPORTANT: Disconnect all connected streams first with disconnect(),
-        then remove the block. Wrong order can crash the COM server.
-        Use list_block_ports(name) to see active connections.
+        IMPORTANT: disconnect all connected streams first,
+        then remove_block(). Wrong order crashes the COM server.
+        Use list_block_ports("name") to check connections.
         """
-        uncache_block_type(name)
         return tool_remove_block(name)
 
     @mcp.tool()
     def block_status(name: str) -> dict:
-        """Read block convergence status (BLKSTAT, PER_ERROR, PROPSTAT, BLKMSG).
+        """Read block convergence status after run.
 
-        BLKSTAT: 0=OK (success), 1=converged, 2=not converged (ran but diverged), 3=warning.
-        BLKSTAT=0 is the normal success state in Aspen v15.
-        BLKMSG has the actual Aspen error text (more useful than BLKSTAT).
+        Returns: BLKSTAT (0=OK, 2=not converged), PER_ERROR,
+        PROPSTAT, BLKMSG (error text from Aspen).
         """
         return tool_block_status(name)
 
     @mcp.tool()
     def explore(path: str) -> dict:
-        """Explore the Aspen Plus object tree at a backslash path (e.g. Data\\Properties)."""
+        """Explore the Aspen COM object tree.
+
+        explore("Data\\Blocks")      — list block nodes
+        explore("Data\\Properties")  — list property nodes
+        """
         return tool_explore(path)
 
     # ── components / property ───────────────────────────────────────────────
 
     @mcp.tool()
     def list_components() -> list[str]:
-        """List all components in the simulation."""
+        """List all components in the simulation.
+
+        Returns: ["WATER","ETHANOL","..."] — the Aspen-internal labels.
+        Use these labels in add_reaction, set_stream_composition, etc.
+        """
         return tool_list_components()
 
     @mcp.tool()
     def add_component(component_id: str) -> str:
-        """Add a component to the simulation (e.g. WATER, ETHANOL).
+        """Add a component from Aspen databank. mutates=True.
 
-        NOTE: IDs over 8 chars get truncated (PROPYLENE -> PROPYLEN).
-        Use list_components() after adding to see the actual label.
-        Column 2 (type) is auto-filled by Aspen.
+        Examples:
+          add_component("WATER")        — water
+          add_component("ETHANOL")      — ethanol
+          add_component("ETHYLBEN")     — ethylbenzene
+
+        IDs over 8 chars get truncated (PROPYLENE→PROPYLEN).
+        Call list_components() after to confirm labels.
+        Call BEFORE add_block/add_stream — components must exist
+        before they can appear in streams.
         """
         return tool_add_component(component_id)
 
     @mcp.tool()
     def remove_component(component_id: str) -> str:
-        """Remove a component from the simulation."""
+        """Remove a component from the simulation. mutates=True.
+
+        remove_component("WATER")
+        """
         return tool_remove_component(component_id)
 
     @mcp.tool()
     def get_property_method() -> str:
-        """Get the current global property method (e.g. PENG-ROB, NRTL)."""
+        """Get the current global property method.
+
+        Returns: "PENG-ROB", "NRTL", "NRTL-RK", etc.
+        """
         return tool_get_property_method()
 
     @mcp.tool()
     def set_property_method(method: str) -> str:
-        """Set the global property method (e.g. NRTL, PENG-ROB, UNIQUAC, IDEAL)."""
+        """Set the global property method. mutates=True.
+
+        set_property_method("NRTL-RK")     — alcohols/water
+        set_property_method("PENG-ROB")    — hydrocarbons
+        set_property_method("ELECNRTL")    — electrolytes
+        """
         return tool_set_property_method(method)
+
+    @mcp.tool()
+    def get_unit_set() -> str:
+        """Get the current global unit set (e.g. ENG, METCBAR, SI)."""
+        return tool_get_unit_set()
+
+    @mcp.tool()
+    def set_unit_set(unit_set: str) -> str:
+        """Set the global unit set. mutates=True.
+
+        Common: METCBAR (C/bar/kmol/hr), ENG (F/psia/lbmol/hr), SI.
+        Warning: changing units does NOT convert existing numeric values.
+        """
+        return tool_set_unit_set(unit_set)
 
     # ── reactions ───────────────────────────────────────────────────────────
 
     @mcp.tool()
     def add_reaction_set(name: str, reaction_type: str = "POWERLAW") -> str:
-        """Create a new reaction set (POWERLAW, LHHW, GENERAL, EQUILIBRIUM)."""
+        """Create a reaction set. mutates=True.
+
+        add_reaction_set("R-1")                        — POWERLAW (default)
+        add_reaction_set("R-1", "EQUILIBRIUM")         — equilibrium
+        """
         return tool_add_reaction_set(name, reaction_type)
 
     @mcp.tool()
     def remove_reaction_set(name: str) -> str:
-        """Remove a reaction set and all its reactions."""
+        """Delete a reaction set and all its reactions. mutates=True."""
         return tool_remove_reaction_set(name)
 
     @mcp.tool()
@@ -465,25 +547,18 @@ def create_server() -> FastMCP:
         phase: str = "L",
         exponents: dict[str, float] | None = None,
     ) -> str:
-        r"""Add a reaction with stoichiometry to a reaction set.
+        """Add a stoichiometric reaction to a set. mutates=True.
 
-        Args:
-            reaction_set: Reaction set name (e.g. R-1).
-            reaction_no: Reaction number (usually 1).
-            reactants: {component_id: coefficient}, e.g. {"ETHYLENE": 1, "WATER": 1}
-            products: {component_id: coefficient}, e.g. {"ETHANOL": 1}
-            phase: 'L' (liquid) or 'V' (vapor).
-            exponents: {component_id: exponent}. Defaults to abs(reactant coeff).
+        add_reaction("R-1", 1,
+          reactants={"CO2":1,"H2":4}, products={"CH4":1,"H2O":2})
 
-            NOTE: Assign to RPLUG/RCSTR:
-              insert_row(r"\Data\Blocks\R-1\Input\RXN_ID")
-              set_value(r"\Data\Blocks\R-1\Input\RXN_ID\#0", "R-1")
+        Note: RXN_ID cannot be set via COM. Use RGIBBS reactor (no RXN_ID).
         """
         return tool_add_reaction(reaction_set, reaction_no, reactants, products, phase, exponents)
 
     @mcp.tool()
     def remove_reaction(reaction_set: str, reaction_no: int) -> str:
-        """Remove a single reaction from a reaction set."""
+        """Remove a single reaction from a set. mutates=True."""
         return tool_remove_reaction(reaction_set, reaction_no)
 
     @mcp.tool()
@@ -491,328 +566,51 @@ def create_server() -> FastMCP:
         """List all reaction sets."""
         return tool_list_reaction_sets()
 
-    @mcp.tool()
-    def setup_block_reaction(
-        block_name: str,
-        reaction_no: int = 1,
-        temperature: float | None = None,
-        pressure: float | None = None,
-        reactants: dict[str, float] | None = None,
-        products: dict[str, float] | None = None,
-        key_component: str | None = None,
-        conversion: float | None = None,
-    ) -> str:
-        """Set up a stoichiometric reaction inside a block (RStoic).
-
-        Block-level internal stoichiometry via COEF/COEF1/CONV tables,
-        NOT external reaction sets (those are for RCSTR/RPlug).
-
-        Supports RStoic. N reactions = N rows -- do NOT insert extra empty rows.
-        Use after add_block + set_param(TEMP/PRES).
-
-        For REquil (no CONV) or RYield (MOLE_YIELD), use manual
-        insert_row + set_label + set_value pattern instead.
-
-        Args:
-            block_name: Block name (e.g. R-1).
-            reaction_no: Reaction number (1-based).
-            temperature: Operating temperature (C). Sets SPEC_OPT=TP.
-            pressure: Operating pressure (bar).
-            reactants: {component_id: coefficient}, e.g. {"ETHYLENE": 1, "WATER": 1}
-            products: {component_id: coefficient}, e.g. {"ETHANOL": 1}
-            key_component: Key reactant for conversion (defaults to first reactant).
-            conversion: Fractional conversion of key component (0.0-1.0).
-
-            NOTE: Coefficients should be positive - the tool auto-negates
-            for reactants and sets them positive for products.
-        """
-        return tool_setup_block_reaction(
-            block_name, reaction_no, temperature, pressure,
-            reactants, products, key_component, conversion,
-        )
-
     # ── flowsheet topology ───────────────────────────────────────────────
 
     @mcp.tool()
     def flowsheet_topology() -> str:
-        """Show the flowsheet topology: source --[stream]--> destination."""
+        """Show flowsheet topology: SOURCE --[stream]--> DEST.
+
+        Returns a text diagram of all block connections.
+        """
         return tool_flowsheet_topology()
 
     @mcp.tool()
     def add_side_duty(block_name: str, stage: int, duty: float) -> str:
-        """Add/update a side heater/cooler duty on a RadFrac stage."""
+        """Add/update side heater/cooler duty on a column stage. mutates=True.
+
+        add_side_duty("C1", 5, -500)    — 500 kW cooling at stage 5
+        """
         return tool_add_side_duty(block_name, stage, duty)
 
     @mcp.tool()
     def remove_side_duty(block_name: str, stage: int) -> str:
-        """Remove a side duty from a RadFrac stage."""
+        """Remove side duty from a column stage. mutates=True."""
         return tool_remove_side_duty(block_name, stage)
 
     # ── generic path access ──────────────────────────────────────────────
 
     @mcp.tool()
     def get_value(path: str) -> str:
-        """Read a value by backslash path (e.g. \\Data\\Streams\\S1\\Output\\RES_TEMP)."""
+        """Read a value by Aspen COM path.
+
+        get_value("\\Data\\Streams\\FEED\\Output\\RES_TEMP")
+        """
         return tool_get_value(path)
 
     @mcp.tool()
     def set_value(path: str, value: str | float, unit: str | None = None) -> str:
-        """Write a value by backslash path (e.g. \\Data\\Blocks\\B1\\Input\\TEMP)."""
-        return tool_set_value(path, value, unit)
+        """Write a value by Aspen COM path. mutates=True.
 
-    @mcp.tool()
-    def insert_row(path: str, dimension: int = 0) -> str:
-        r"""Insert a new row in a table-type node.
-
-        CRITICAL for RPLUG/RCSTR: RXN_ID starts empty (0 rows).
-        You MUST insert_row BEFORE set_value:
-          insert_row("\Data\Blocks\R-1\Input\RXN_ID")
-          set_value("\Data\Blocks\R-1\Input\RXN_ID\#0", "R-1")
-
-        Args:
-            path: Backslash path to the table node.
-            dimension: Table dimension (default 0).
+        set_value("\\Data\\Blocks\\H1\\Input\\TEMP", 150)
         """
-        return tool_insert_row(path, dimension)
+        return tool_set_value(path, value, unit)
 
     # ── analysis ─────────────────────────────────────────────────────────
 
     @mcp.tool()
     def sensitivity(
-        block_name: str,
-        variable: str,
-        values: list[float],
-        unit: str = "",
-    ) -> dict:
-        """Manual sensitivity: sweep a block variable and re-run."""
-        return tool_sensitivity(block_name, variable, values, unit)
-
-    @mcp.tool()
-    def export_report_file(file_path: str) -> str:
-        """Export the simulation report to a .rep file."""
-        return tool_export_report_file(file_path)
-
-    @mcp.tool()
-    def diagnose(keywords: list[str]) -> str:
-        """Diagnose convergence issues: live status + knowledge base search.
-
-        BLKSTAT=0 = OK (normal). BLKSTAT=2 = not converged (ran but diverged).
-        BLKSTAT=2 = not converged (ran but diverged).
-        BLKMSG has the actual Aspen error text.
-
-        Args:
-            keywords: Keywords to search the knowledge base
-                      (e.g. ["Wegstein"], ["COLUMN DRIES UP"], ["NRTL"]).
-        """
-        return tool_diagnose(keywords)
-
-    @mcp.tool()
-    def search_convergence_knowledge(keywords: list[str]) -> list[dict]:
-        """Search convergence troubleshooting knowledge base (verbose).
-
-        Also searches convergence method guide and common error table.
-        Use diagnose() for a human-readable report with live status.
-        """
-        return tool_search_convergence_knowledge(keywords)
-
-    @mcp.tool()
-    def generate_input_summary(file_path: str, mode: int = 0) -> str:
-        """Generate an input summary file (.bkp) for debugging.
-        
-        Args:
-            file_path: Output file path (.bkp).
-            mode: 0=input summary, 1=full backup, 4=input, 5=input+graphics.
-        """
-        return tool_generate_input_summary(file_path, mode)
-
-    @mcp.tool()
-    def readback(file_path: str, mode: int = 0) -> str:
-        """Read back a .bkp file into the current simulation.
-
-        Use after editing a .bkp file generated by generate_input_summary().
-        This is the reliable way to add utility definitions via COM.
-
-        Args:
-            file_path: Path to .bkp file.
-            mode: 0=input summary (default), 1=full backup.
-        """
-        return tool_readback(file_path, mode)
-
-    @mcp.tool()
-    def find_incomplete_inputs() -> str:
-        """Scan the simulation for incomplete input nodes.
-
-        Uses smart categorization per block type:
-        - Reads SPEC_OPT to determine the current operating mode
-        - Groups params into Critical / Mode-irrelevant / Optional
-        - Critical params are the ones that truly need filling for the current mode
-        - Mode-irrelevant params can be ignored (only matter if mode changes)
-
-        For unknown block types, lists all active-but-unset params as before.
-        CC Nodes/Output/User Table are filtered out.
-        """
-        return tool_find_incomplete_inputs()
-
-    # -- tear streams -------------------------------------------------------
-
-    @mcp.tool()
-    def list_tear_streams() -> list[str]:
-        """List all tear streams in the simulation (recycle loops)."""
-        return tool_list_tear_streams()
-
-    @mcp.tool()
-    def set_tear_estimate(stream_name: str, temp: float | None = None,
-                           pres: float | None = None,
-                           total_flow: float | None = None) -> str:
-        """Set initial estimate for a tear (recycle) stream.
-
-        Args:
-            stream_name: Tear stream name.
-            temp: Estimated temperature (C).
-            pres: Estimated pressure (bar).
-            total_flow: Estimated total molar flow (kmol/hr).
-        """
-        return tool_set_tear_estimate(stream_name, temp, pres, total_flow)
-
-    # -- simulation warnings -------------------------------------------------
-
-    @mcp.tool()
-    def simulation_warnings() -> list[str]:
-        """Scan for common config issues (pressure mismatch, unconnected feeds)."""
-        return tool_simulation_warnings()
-
-    @mcp.tool()
-    def probe_f4() -> str:
-        """Deep probe Aspen COM for F4/NextRequiredInput methods."""
-        return tool_probe_f4()
-
-    @mcp.tool()
-    def validate_block(block_name: str) -> str:
-        """Check block validation status (Engine.Ready, input completeness, errors)."""
-        return tool_validate_block(block_name)
-
-    @mcp.tool()
-    def fill_trivial_params() -> str:
-        """Fill trivial/meaningless active-but-unset parameters across all blocks.
-
-        Many parameters show up in find_incomplete_inputs() because they are
-        "active" (i7=1) but never filled — they are COM infrastructure, UI
-        artifacts, estimation placeholders, or dynamic/holdup params irrelevant
-        to steady-state simulation. This function fills them with safe defaults
-        (0 for numbers, "" for strings) so that subsequent diagnostics only
-        show the truly important missing parameters.
-        """
-        return tool_fill_trivial_params()
-
-    @mcp.tool()
-    def deep_probe(block_name: str = "") -> str:
-        """Deep probe a block's input node properties for validation info."""
-        return tool_deep_probe(block_name)
-
-    # -- fsplit ---------------------------------------------------------------
-
-    @mcp.tool()
-    def configure_fsplit(block_name: str, outlet_name: str, frac: float) -> str:
-        """Add/configure a second product outlet on an FSPLIT block.
-
-        Args:
-            block_name: FSPLIT block name (e.g. S-1).
-            outlet_name: Product stream name (e.g. RECYCLE).
-            frac: Split fraction (0.0-1.0) for this outlet.
-        """
-        return tool_configure_fsplit(block_name, outlet_name, frac)
-
-    @mcp.tool()
-    def list_all_ports() -> str:
-        """List all block ports and connected streams across the entire flowsheet.
-
-        One-command overview of every block, port names, and connected streams.
-        Use before connect() to see available ports, or before disconnect().
-        """
-        return tool_list_all_ports()
-
-
-    # -- column configuration ---------------------------------------------------
-
-    @mcp.tool()
-    def set_column_stages(block_name: str, nstage: int) -> str:
-        """Set the number of stages on a RadFrac / ABSBR1 column.
-
-        NSTAGE is the total number of theoretical stages (including
-        condenser and reboiler if present).
-
-        Args:
-            block_name: Column block name (e.g. 'HPD', 'C1').
-            nstage: Number of stages (integer >= 2).
-        """
-        return tool_set_column_stages(block_name, nstage)
-
-    @mcp.tool()
-    def set_condenser_type(block_name: str, condenser_type: str) -> str:
-        """Set the condenser type on a RadFrac column.
-
-        Args:
-            block_name: Column block name.
-            condenser_type: One of 'NONE', 'TOTAL', 'PARTIAL-V',
-                            'PARTIAL-L', 'PARTIAL-VL'.
-        """
-        return tool_set_condenser_type(block_name, condenser_type)
-
-    @mcp.tool()
-    def set_reboiler_type(block_name: str, reboiler_type: str) -> str:
-        """Set the reboiler type on a RadFrac column.
-
-        Args:
-            block_name: Column block name.
-            reboiler_type: One of 'NONE', 'KETTLE', 'THERMOSIPHON',
-                           'INTERNALS', 'FIRED'.
-        """
-        return tool_set_reboiler_type(block_name, reboiler_type)
-
-    @mcp.tool()
-    def set_feed_stage(block_name: str, stream_name: str, stage: int) -> str:
-        """Set the feed stage for a stream entering a column.
-
-        The stream must already be connected to the column via connect()
-        or connect_port().
-
-        Args:
-            block_name: Column block name.
-            stream_name: Feed stream name.
-            stage: Stage number (1 = top, NSTAGE = bottom).
-        """
-        return tool_set_feed_stage(block_name, stream_name, stage)
-
-    @mcp.tool()
-    def set_product_stage(block_name: str, stream_name: str,
-                           stage: int, phase: str = "L") -> str:
-        """Set the product draw stage and phase for a column product stream.
-
-        Args:
-            block_name: Column block name.
-            stream_name: Product stream name.
-            stage: Stage number from which to draw.
-            phase: 'L' (liquid, default) or 'V' (vapor).
-        """
-        return tool_set_product_stage(block_name, stream_name, stage, phase)
-
-    @mcp.tool()
-    def set_column_pressure(block_name: str, top_pres: float,
-                             dp_stage: float | None = None) -> str:
-        """Set the column pressure profile.
-
-        Args:
-            block_name: Column block name.
-            top_pres: Pressure at the top stage (in current unit-set, e.g. bar).
-            dp_stage: Optional pressure drop per stage. If omitted, constant
-                      pressure is assumed.
-        """
-        return tool_set_column_pressure(block_name, top_pres, dp_stage)
-
-        # -- sensitivity advanced ------------------------------------------------
-
-    @mcp.tool()
-    def sensitivity_advanced(
         block_name: str,
         variable: str,
         values: list[float],
@@ -824,113 +622,200 @@ def create_server() -> FastMCP:
         feed_composition: dict[str, float] | None = None,
         title: str = "",
     ) -> dict:
-        """Sweep a block variable with linked params and collect results."""
-        return tool_sensitivity_advanced(
+        """Run sensitivity analysis: vary one parameter, collect results.
+
+        sensitivity("H1","TEMP",[100,150,200,...])
+          — vary heater temperature, collect stream results at each value.
+        """
+        return tool_sensitivity(
             block_name, variable, values, linked_params, targets,
             feed_stream, feed_temp, feed_pres, feed_composition, title,
         )
 
-
-
-    # -- table label helper ------------------------------------------------
+    @mcp.tool()
+    def export_report_file(file_path: str) -> str:
+        """Export simulation report as .rep file."""
+        return tool_export_report_file(file_path)
 
     @mcp.tool()
-    def set_label(path: str, index: int, label: str, dimension: int = 0) -> str:
-        """Set a label on a table-type node at a given dimension and index.
+    def diagnose(keywords: list[str]) -> str:
+        """Diagnose convergence problems: live status + knowledge search.
 
-        Used for setting row/column labels in 2D tables (e.g. COEF, COEF1, CONV).
-        Example: set_label(r'Data\Blocks\R1\Input\CONV', index=0, label='1')
+        diagnose(["Wegstein"])           — search for solver issues
+        diagnose(["COLUMN DRIES UP"])    — search for column failures
+        diagnose(["NRTL"])               — search for property issues
+
+        Shows BLKSTAT/PER_ERROR for all blocks, plus knowledge base results.
         """
-        from .tools._common import set_table_label
-        from .com_bridge import aspen
-        ok = aspen.call(lambda: set_table_label(aspen._app.RootModel(""), path, dimension, index, label))
-        return f"Label set: [{dimension},{index}] = '{label}'" if ok else f"Failed to set label"
-
-    # -- trace --------------------------------------------------------------
+        return tool_diagnose(keywords)
 
     @mcp.tool()
-    def trace_start() -> str:
-        """Start recording COM call trace (for debugging differences between GUI and MCP operations)."""
-        from .com_bridge import aspen
-        return aspen.trace_start()
+    def search_convergence_knowledge(keywords: list[str]) -> list[dict]:
+        """Search the convergence knowledge base by keywords.
 
-    @mcp.tool()
-    def trace_stop() -> list:
-        """Stop recording COM call trace and return the log."""
-        from .com_bridge import aspen
-        result = aspen.trace_stop()
-        return result
-
-    # -- cache / call log ---------------------------------------------------
-
-    @mcp.tool()
-    def get_call_log(limit: int = 20) -> list[dict]:
-        """Show recent tool call history (up to 200 saved)."""
-        return tool_get_call_log(limit)
-
-    @mcp.tool()
-    def clear_call_log() -> str:
-        """Clear the tool call history."""
-        return tool_clear_call_log()
-
-    @mcp.tool()
-    def get_sensitivity_history() -> list[dict]:
-        """Show all saved sensitivity analysis results."""
-        return tool_get_sensitivity_history()
-
-    @mcp.tool()
-    def clear_sensitivity_cache() -> str:
-        """Clear all cached sensitivity results."""
-        return tool_clear_sensitivity_cache()
-
-    # -- utilities -------------------------------------------------------------
-
-    @mcp.tool()
-    def add_utility(utility_name: str, utility_type: str,
-                    block_name: str | None = None,
-                    params: dict | None = None) -> str:
-        """Add a utility (WATER, STEAM, ELECTRICITY, etc.) with full configuration.
-
-        WARNING: NEVER set UTILITY_ID via set_param() -- it corrupts the
-        simulation state irreversibly. Always use this tool instead.
-
-        All parameters are set atomically. Optionally assign to a block.
-
-        Valid utility_type values: WATER, STEAM, ELECTRICITY, REFRIGERANT, FUEL.
-
-        Common params by type:
-          WATER:        TIN, TOUT, PRES, VFRAC(=0), CALOPT(=DUTY)
-          STEAM:        PRES, VFRAC(=1), TIN, TOUT, or DEGSUP_OUT
-          ELECTRICITY:  CALOPT(=DUTY)
-
-        Example:
-          add_utility('CHW-01', 'WATER', 'COOLER', {'TIN':5, 'TOUT':15, 'PRES':0.4})
-          add_utility('LPS-01', 'STEAM', 'ASSI-REB', {'PRES':0.5, 'VFRAC':1})
-          add_utility('ELEC-01', 'ELECTRICITY', 'COMP')
+        Returns ranked knowledge entries. Use diagnose() instead
+        for a combined status report + knowledge search.
         """
+        return tool_search_convergence_knowledge(keywords)
+
+    @mcp.tool()
+    def generate_input_summary(file_path: str) -> str:
+        """Export input summary as .bkp file for debugging.
+
+        Writes to a TEMP file — does NOT overwrite your original.
+        """
+        return tool_generate_input_summary(file_path)
+
+    @mcp.tool()
+    def find_incomplete_inputs() -> str:
+        """Find incomplete inputs grouped by severity.
+
+        Categories: Critical (must fill) / Mode-irrelevant / Optional.
+        Call fill_trivial_params() first to reduce noise.
+        """
+        return tool_find_incomplete_inputs()
+
+    # -- tear streams -------------------------------------------------------
+
+    @mcp.tool()
+    def list_tear_streams() -> list[str]:
+        """List all tear streams (recycle loops) in the simulation.
+
+        Each tear stream is Aspen's "guess point" for a recycle loop.
+        Use set_tear_estimate() to provide better initial values.
+        """
+        return tool_list_tear_streams()
+
+    @mcp.tool()
+    def set_tear_estimate(stream_name: str, temp: float | None = None,
+                           pres: float | None = None,
+                           total_flow: float | None = None) -> str:
+        """Set initial estimates for a tear (recycle) stream. mutates=True.
+
+        set_tear_estimate("RECYCLE", temp=200, pres=2, total_flow=50)
+
+        Good estimates speed up convergence in recycle loops.
+        """
+        return tool_set_tear_estimate(stream_name, temp, pres, total_flow)
+
+    # -- simulation warnings -------------------------------------------------
+
+    @mcp.tool()
+    def simulation_warnings() -> list[str]:
+        """Scan for common issues: pressure mismatches, disconnected feeds.
+
+        Call before run() to catch obvious configuration errors.
+        """
+        return tool_simulation_warnings()
+
+    @mcp.tool()
+    def validate_block(block_name: str) -> str:
+        """Check if a block is ready to run.
+
+        validate_block("H1") — returns Engine.Ready status +
+        missing input diagnostics.
+        """
+        return tool_validate_block(block_name)
+
+    @mcp.tool()
+    def fill_trivial_params() -> str:
+        """Fill harmless active-but-unset params with safe defaults.
+
+        Call BEFORE find_incomplete_inputs() to reduce noise from
+        COM infrastructure / UI artifacts / estimation placeholders.
+        """
+        return tool_fill_trivial_params()
+
+    @mcp.tool()
+    def deep_probe(block_name: str = "") -> str:
+        """Deep-probe a block's input node attributes for debugging."""
+        return tool_deep_probe(block_name)
+
+    # -- fsplit ---------------------------------------------------------------
+
+    @mcp.tool()
+    def configure_fsplit(block_name: str, outlet_name: str, frac: float) -> str:
+        """Configure a stream splitter outlet. mutates=True.
+
+        configure_fsplit("S-1","RECYCLE",0.3)  — 30% to RECYCLE
+        """
+        return tool_configure_fsplit(block_name, outlet_name, frac)
+
+    # -- column configuration ---------------------------------------------------
+
+    @mcp.tool()
+    def set_column_stages(block_name: str, nstage: int) -> str:
+        """Set total stages on a distillation column. mutates=True.
+
+        set_column_stages("C1", 20)    — 20 theoretical stages
+        Includes condenser and reboiler. Range: >=2.
+        """
+        return tool_set_column_stages(block_name, nstage)
+
+    @mcp.tool()
+    def set_condenser_type(block_name: str, condenser_type: str) -> str:
+        """Set column condenser type. mutates=True.
+
+        set_condenser_type("C1", "TOTAL")     — total condenser
+        set_condenser_type("C1", "PARTIAL-V") — partial vapor product
+        """
+        return tool_set_condenser_type(block_name, condenser_type)
+
+    @mcp.tool()
+    def set_reboiler_type(block_name: str, reboiler_type: str) -> str:
+        """Set column reboiler type. mutates=True.
+
+        set_reboiler_type("C1", "KETTLE")
+        """
+        return tool_set_reboiler_type(block_name, reboiler_type)
+
+    @mcp.tool()
+    def set_feed_stage(block_name: str, stream_name: str, stage: int) -> str:
+        """Set feed stage on a column. mutates=True.
+
+        set_feed_stage("C1", "FEED", 10)    — feed enters at stage 10
+        Stream must already be connected via connect()/connect_port().
+        """
+        return tool_set_feed_stage(block_name, stream_name, stage)
+
+    @mcp.tool()
+    def set_product_stage(block_name: str, stream_name: str,
+                           stage: int, phase: str = "L") -> str:
+        """Set product draw stage and phase on a column. mutates=True.
+
+        set_product_stage("C1", "DIST", 1, phase="L")   — distillate
+        set_product_stage("C1", "BOTS", 20, phase="L")  — bottoms
+        """
+        return tool_set_product_stage(block_name, stream_name, stage, phase)
+
+    @mcp.tool()
+    def set_column_pressure(block_name: str, top_pres: float,
+                             dp_stage: float | None = None) -> str:
+        """Set column pressure profile. mutates=True.
+
+        set_column_pressure("C1", 5.0)               — constant 5 bar
+        set_column_pressure("C1", 5.0, dp_stage=0.1) — 5 bar top, 0.1 bar/stage drop
+        """
+        return tool_set_column_pressure(block_name, top_pres, dp_stage)
+
+    @mcp.tool()
+    def set_column_specs(block_name: str, rr: float | None = None,
+                          d: float | None = None, b: float | None = None,
+                          br: float | None = None) -> str:
+        """Set RadFrac operating specs (exactly 2 required). mutates=True.
+
+        set_column_specs("C1", rr=2.0, d=7.0)   — reflux ratio + distillate
+        set_column_specs("C1", rr=2.0, b=93.0)  — reflux ratio + bottoms
+        set_column_specs("C1", rr=2.0, br=3.0)  — reflux ratio + boilup
+        """
+        return tool_set_column_specs(block_name, rr, d, b, br)
+
+    # -- utility tools ------------------------------------------------------------
+
+    @mcp.tool()
+    def add_utility(utility_name: str, utility_type: str, block_name: str | None = None, params: dict | None = None) -> str:
+        """Add a utility (WATER, STEAM, ELECTRICITY, REFRIGERANT, FUEL, FURNACE)."""
         return tool_add_utility(utility_name, utility_type, block_name, params)
-
-    @mcp.tool()
-    def batch_add_utilities(utilities: list[dict]) -> str:
-        """Create multiple utilities in a single atomic COM call.
-
-        Each dict must have 'name' and 'type'. Optional keys: 'block', 'params'.
-
-        This bypasses the Aspen engine's incremental-validation issue where
-        multiple Add() calls each trigger a validation pass. By doing all
-        Add() calls in one COM apartment dispatch, the engine only sees
-        the final complete state once.
-
-        Example:
-          batch_add_utilities([
-            {"name": "CHW-01", "type": "WATER", "block": "COOLER",
-             "params": {"TIN":2, "TOUT":7, "PRES":0.4, "VFRAC":0}},
-            {"name": "LPS-01", "type": "STEAM", "block": "ASSI-REB",
-             "params": {"PRES":0.5, "VFRAC":1, "TIN":152, "TOUT":152}},
-            {"name": "ELEC-01", "type": "ELECTRICITY", "block": "COMP"},
-          ])
-        """
-        return tool_batch_add_utilities(utilities)
 
     @mcp.tool()
     def list_utilities() -> list[str]:
@@ -939,44 +824,21 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     def get_utility(name: str) -> dict:
-        """Read a utility's input and output parameters."""
+        """Read utility parameters."""
         return tool_get_utility(name)
 
     @mcp.tool()
     def remove_utility(name: str) -> str:
-        """Remove a utility. Clears UTILITY_ID/COND_UTIL/REB_UTIL on all blocks, then removes the node.
-
-        Also clears column condenser/reboiler references (COND_UTIL/REB_UTIL).
-        After removing, call find_incomplete_inputs() to verify.
-        """
+        """Remove a utility."""
         return tool_remove_utility(name)
 
-    # -- help ----------------------------------------------------------------
-
     @mcp.tool()
-    def help(topic: str | None = None) -> str:
-        """Get detailed usage guide for Aspen MCP workflows.
+    def batch_add_utilities(utilities: list[dict]) -> str:
+        """Add multiple utilities atomically.
 
-        Topics: workflow-basic, workflow-from-scratch, workflow-reaction,
-                block-reaction, deletion-order, com-recovery, stream-params,
-                reaction-manual, component-facts, tips, pitfalls, dev-pattern,
-                attribute-values, set-params, diagnostics,
-                fill-trivial-params, com-sta-conflict, utilities, quick-start.
-
-        Workflow rule: ALWAYS run find_incomplete_inputs() before reinit_and_run().
-
-          diagnostics       -- find_incomplete_inputs (smart categorization), validate_block, diagnose
-          fill-trivial-params -- fill infrastructure/UI-artifact params with safe defaults
-          attribute-values -- COM metadata index meanings (i2, i3, i7, i11, i19)
-          set-params       -- unit hints + range display on set_param/set_stream_param
-          list-all-ports   -- one-command view of every block ports and connected streams
-          block-reaction   -- setup stoichiometric reactions in RStoic blocks
-          utilities        -- add utilities (WATER, STEAM, ELECTRICITY) safely
-          quick-start      -- one-page overview of every tool and workflow
-
-        Call without arguments to list all topics.
+        utilities: [{"name": "CW", "type": "WATER", "block": "H1", "params": {...}}, ...]
         """
-        return get_help(topic)
+        return tool_batch_add_utilities(utilities)
 
     logger.info("All tools registered")
     return mcp
@@ -990,5 +852,7 @@ def main() -> None:
     mcp_server.run(transport="stdio")
 
 
+if __name__ == "__main__":
+    main()
 if __name__ == "__main__":
     main()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..com_bridge import aspen
+from ._common import walk
 
 
 # All COM operations must run inside aspen.call() lambdas so they
@@ -14,7 +15,7 @@ def tool_list_components() -> list[str]:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            node = _walk(tree, "Data", "Components", "Specifications", "Input", "TYPE")
+            node = walk(tree, "Data", "Components", "Specifications", "Input", "TYPE")
             if node is None:
                 return ["(components node not found)"]
             elems = node.Elements
@@ -40,7 +41,7 @@ def tool_add_component(component_id: str) -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            node = _walk(tree, "Data", "Components", "Specifications", "Input", "TYPE")
+            node = walk(tree, "Data", "Components", "Specifications", "Input", "TYPE")
             if node is None:
                 return "Error: components node not found"
             elems = node.Elements
@@ -73,7 +74,7 @@ def tool_add_component(component_id: str) -> str:
             # For long names, write ANAME for databank resolution
             if needs_aname:
                 try:
-                    aname_node = _walk(tree, "Data", "Components", "Specifications",
+                    aname_node = walk(tree, "Data", "Components", "Specifications",
                                        "Input", "ANAME", label)
                     if aname_node is not None:
                         aname_node.Value = component_id
@@ -83,9 +84,9 @@ def tool_add_component(component_id: str) -> str:
             # Read back what Aspen resolved
             resolved = ""
             try:
-                aname_node = _walk(tree, "Data", "Components", "Specifications",
+                aname_node = walk(tree, "Data", "Components", "Specifications",
                                    "Input", "ANAME", label)
-                dbname_node = _walk(tree, "Data", "Components", "Specifications",
+                dbname_node = walk(tree, "Data", "Components", "Specifications",
                                     "Input", "DBNAME", label)
                 if aname_node and aname_node.Value:
                     resolved += f", alias={aname_node.Value}"
@@ -113,7 +114,7 @@ def tool_remove_component(component_id: str) -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            node = _walk(tree, "Data", "Components", "Specifications", "Input", "TYPE")
+            node = walk(tree, "Data", "Components", "Specifications", "Input", "TYPE")
             if node is None:
                 return "Error: components node not found"
             elems = node.Elements
@@ -134,19 +135,6 @@ def tool_remove_component(component_id: str) -> str:
         return f"Error removing component '{component_id}': {exc}"
 
 
-def _walk(root, *parts):
-    """Walk IHNode tree (called on COM thread)."""
-    node = root
-    for p in parts:
-        try:
-            node = node.Elements(p)
-        except Exception:
-            return None
-        if node is None:
-            return None
-    return node
-
-
 # --- Property method --------------------------------------------------------
 
 
@@ -155,7 +143,7 @@ def tool_get_property_method() -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            gops = _walk(tree, "Data", "Properties", "Specifications", "Input", "GOPSETNAME")
+            gops = walk(tree, "Data", "Properties", "Specifications", "Input", "GOPSETNAME")
             if gops is None:
                 return "(property method node not found)"
             return str(gops.Value)
@@ -169,8 +157,8 @@ def tool_set_property_method(method: str) -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            gbase = _walk(tree, "Data", "Properties", "Specifications", "Input", "GBASEOPSET")
-            gops = _walk(tree, "Data", "Properties", "Specifications", "Input", "GOPSETNAME")
+            gbase = walk(tree, "Data", "Properties", "Specifications", "Input", "GBASEOPSET")
+            gops = walk(tree, "Data", "Properties", "Specifications", "Input", "GOPSETNAME")
             if gbase is None or gops is None:
                 return "Error: property method node not found"
             gbase.SetValue(0, method)
@@ -179,3 +167,59 @@ def tool_set_property_method(method: str) -> str:
         return aspen.call(impl)
     except Exception as exc:
         return f"Error setting property method: {exc}"
+
+
+# --- Unit set ----------------------------------------------------------------
+
+
+def tool_get_unit_set() -> str:
+    """Get the current global unit set (e.g. ENG, METCBAR, SI)."""
+    try:
+        def impl():
+            tree = aspen._app.RootModel("")
+            node = walk(tree, "Data", "Setup", "Global", "Input", "GLOBDATASET")
+            if node is None or node.Value is None:
+                return "(unknown)"
+            return str(node.Value)
+        return aspen.call(impl)
+    except Exception as exc:
+        return f"Error: {exc}"
+
+
+_UNIT_SET_INFO = {
+    "METCBAR": "C / bar / kmol/hr",
+    "MET": "C / bar / kmol/hr",
+    "ENG": "F / psia / lbmol/hr",
+    "SI": "K / Pa / mol/sec",
+    "METC": "C / bar / kmol/hr",
+}
+
+
+def tool_set_unit_set(unit_set: str) -> str:
+    """Set the global unit set. mutates=True.
+
+    Common: METCBAR (C/bar/kmol/hr), ENG (F/psia/lbmol/hr), SI.
+
+    Warning: changing units does NOT convert existing numeric values.
+    """
+    unit_set = unit_set.upper().strip()
+    info = _UNIT_SET_INFO.get(unit_set, unit_set)
+    try:
+        def impl():
+            tree = aspen._app.RootModel("")
+            node = walk(tree, "Data", "Setup", "Global", "Input", "GLOBDATASET")
+            if node is None:
+                return "Error: GLOBDATASET node not found"
+            node.SetValue(0, unit_set)
+            # Also update INSET and OUTSET
+            for key in ("INSET", "OUTSET"):
+                n = walk(tree, "Data", "Setup", "Global", "Input", key)
+                if n is not None:
+                    try:
+                        n.SetValue(0, unit_set)
+                    except Exception:
+                        pass
+            return f"Unit set changed to {unit_set} ({info})"
+        return aspen.call(impl)
+    except Exception as exc:
+        return f"Error: {exc}"

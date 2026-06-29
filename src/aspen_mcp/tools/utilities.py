@@ -234,26 +234,9 @@ def tool_batch_add_utilities(
 
                 created.append(name)
 
-            try:
-                aspen._app.Engine.Reinit()
-                aspen._app.Run2()
-            except Exception:
-                pass
-
-            results = {}
-            for b in ["COOLER", "ASSI-REB", "COMP", "HPD", "FLASH", "SPLITTER"]:
-                try:
-                    bs = tree.FindNode(f"\\Data\\Blocks\\{b}\\Output\\BLKSTAT")
-                    results[b] = bs.Value if bs else None
-                except Exception:
-                    results[b] = None
-
-            created_str = ", ".join(created)
             if errors:
-                return f"Created: [{created_str}]. Errors: {'; '.join(errors)}. BLKSTAT: {results}"
-            all_ok = all(v is not None and v < 2 for v in results.values())
-            status = "OK" if all_ok else f"BLKSTAT: {results}"
-            return f"Utilities [{created_str}] created. {status}"
+                return f"Created: [{', '.join(created)}]. Errors: {'; '.join(errors)}."
+            return f"Utilities [{', '.join(created)}] created."
 
         return aspen.call(impl)
     except Exception as exc:

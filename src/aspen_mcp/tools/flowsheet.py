@@ -7,65 +7,176 @@ COM apartment thread.
 from __future__ import annotations
 
 from ..com_bridge import aspen
-
-
-# Block type cache for list_all_ports display.
-_BLOCK_TYPE_CACHE: dict[str, str] = {}
-
-
-def cache_block_type(name: str, blk_type: str) -> None:
-    """Record a block type."""
-    _BLOCK_TYPE_CACHE[name] = blk_type
-
-
-def uncache_block_type(name: str) -> None:
-    """Remove from cache."""
-    _BLOCK_TYPE_CACHE.pop(name, None)
-
-
-def _walk(root, *parts):
-    node = root
-    for p in parts:
-        try:
-            node = node.Elements(p)
-        except Exception:
-            return None
-    return node
+from ._common import walk
 
 
 def tool_flowsheet_topology() -> str:
-    """Show the flowsheet topology: source --[stream]--> destination.
+    """Show flowsheet topology: SOURCE --[stream]--> DEST.
 
-    Now shows complete bidirectional format: BlockA --[StreamName]--> BlockB.
-    Unknown sources/destinations show as (?).
+    Returns a text diagram of all block connections.
     """
     try:
         def impl():
             tree = aspen._app.RootModel("")
             lines = ["Flowsheet Topology:"]
 
-            # Build full connection map from stream SOURCE/DESTINATION
-            streams_node = _walk(tree, "Data", "Streams")
-            if streams_node is not None:
-                for i in range(200):
+            blocks_node = walk(tree, "Data", "Blocks")
+            if blocks_node is None:
+                return "Flowsheet is empty (no blocks)"
+            
+            # Build topology from block ports
+            # For each block's output ports, trace connected streams to destination blocks
+            connections: list[tuple[str, str, str]] = []  # (src_block, stream, dst_block)
+            seen_streams: set[str] = set()
+            
+            for bi in range(200):
+                try:
+                    block = blocks_node.Elements(bi)
+                except Exception:
+                    break
+                if block is None:
+                    break
+                block_name = block.Name
+                
+                try:
+                    ports_node = block.Elements("Ports")
+                except Exception:
+                    continue
+                
+                for pi in range(30):
                     try:
-                        s = streams_node.Elements(i)
+                        port = ports_node.Elements(pi)
                     except Exception:
                         break
-                    if s is None:
+                    if port is None:
                         break
-                    sname = s.Name
-                    src = _walk(tree, "Data", "Streams", sname, "Output", "SOURCE")
-                    dst = _walk(tree, "Data", "Streams", sname, "Output", "DESTINATION")
-                    src_val = src.Value if src is not None else None
-                    dst_val = dst.Value if dst is not None else None
-                    if src_val or dst_val:
-                        src_str = src_val if src_val else "(?)"
-                        dst_str = dst_val if dst_val else "(?)"
-                        lines.append(f"  {src_str} --[{sname}]--> {dst_str}")
+                    
+                    port_name = port.Name
+                    # Only show OUTPUT ports as sources
+                    if "(OUT)" not in port_name and port_name not in ("P(OUT)",):
+                        continue
+                    
+                    try:
+                        port_els = port.Elements
+                    except Exception:
+                        continue
+                    
+                    for k in range(port_els.Count):
+                        try:
+                            stream_name = port_els.Item(k).Name
+                        except Exception:
+                            break
+                        
+                        if stream_name in seen_streams:
+                            continue
+                        seen_streams.add(stream_name)
+                        
+                        # Find which block's INPUT has this stream
+                        dst_block = "?"
+                        for bj in range(200):
+                            try:
+                                other_block = blocks_node.Elements(bj)
+                            except Exception:
+                                break
+                            if other_block is None:
+                                break
+                            if other_block.Name == block_name:
+                                continue
+                            try:
+                                other_ports = other_block.Elements("Ports")
+                            except Exception:
+                                continue
+                            for pj in range(30):
+                                try:
+                                    other_port = other_ports.Elements(pj)
+                                except Exception:
+                                    break
+                                if other_port is None:
+                                    break
+                                if "(IN)" in other_port.Name or other_port.Name == "F(IN)":
+                                    try:
+                                        other_els = other_port.Elements
+                                    except Exception:
+                                        continue
+                                    for kj in range(other_els.Count):
+                                        try:
+                                            if other_els.Item(kj).Name == stream_name:
+                                                dst_block = other_block.Name
+                                                break
+                                        except Exception:
+                                            break
+                                    if dst_block != "?":
+                                        break
+                            if dst_block != "?":
+                                break
+                        
+                        # No downstream consumer = product stream
+                        if dst_block == "?":
+                            dst_block = "(product)"
+                        connections.append((block_name, stream_name, dst_block))
 
-            if len(lines) == 1:
-                return "Flowsheet is empty (no blocks or streams)"
+            # Also show feed streams (connected to block inputs, no upstream block)
+            for bi in range(200):
+                try:
+                    block = blocks_node.Elements(bi)
+                except Exception:
+                    break
+                if block is None:
+                    break
+                block_name2 = block.Name
+                try:
+                    ports_node2 = block.Elements("Ports")
+                except Exception:
+                    continue
+                for pi in range(30):
+                    try:
+                        port2 = ports_node2.Elements(pi)
+                    except Exception:
+                        break
+                    if port2 is None:
+                        break
+                    port_name2 = port2.Name
+                    if "(IN)" not in port_name2 and port_name2 != "F(IN)":
+                        continue
+                    try:
+                        port_els2 = port2.Elements
+                    except Exception:
+                        continue
+                    for k in range(port_els2.Count):
+                        try:
+                            sname2 = port_els2.Item(k).Name
+                        except Exception:
+                            break
+                        if sname2 in seen_streams:
+                            continue
+                        seen_streams.add(sname2)
+                        connections.append(("(feed)", sname2, block_name2))
+            
+            if not connections:
+                # Fallback: try SOURCE/DESTINATION from stream Output (requires run)
+                streams_node = walk(tree, "Data", "Streams")
+                if streams_node is not None:
+                    for i in range(200):
+                        try:
+                            s = streams_node.Elements(i)
+                        except Exception:
+                            break
+                        if s is None:
+                            break
+                        sname = s.Name
+                        src = walk(tree, "Data", "Streams", sname, "Output", "SOURCE")
+                        dst = walk(tree, "Data", "Streams", sname, "Output", "DESTINATION")
+                        src_val = src.Value if src is not None else None
+                        dst_val = dst.Value if dst is not None else None
+                        if src_val or dst_val:
+                            connections.append((str(src_val or "?"), sname, str(dst_val or "?")))
+            
+            if not connections:
+                return "Flowsheet is empty (no connections found)"
+            
+            for src, stream, dst in connections:
+                lines.append(f"  {src} --[{stream}]--> {dst}")
+            
             return "\n".join(lines)
         return aspen.call(impl)
     except Exception as exc:
@@ -79,10 +190,10 @@ def tool_add_side_duty(block_name: str, stage: int, duty: float) -> str:
             tree = aspen._app.RootModel("")
             # Navigate to side duties under RadFrac block
             # Path: Data\Blocks\{name}\Input\SIDE_DUTIES\{stage name}\DUTY
-            path = _walk(tree, "Data", "Blocks", block_name, "Input")
+            path = walk(tree, "Data", "Blocks", block_name, "Input")
             if path is None:
                 return f"Block '{block_name}' Input not found"
-            sd_node = _walk(tree, "Data", "Blocks", block_name, "Input", "SIDE_DUTIES")
+            sd_node = walk(tree, "Data", "Blocks", block_name, "Input", "SIDE_DUTIES")
             if sd_node is None:
                 return f"No SIDE_DUTIES on block '{block_name}' (is it RadFrac?)"
             # Find or create the stage entry
@@ -99,7 +210,7 @@ def tool_add_side_duty(block_name: str, stage: int, duty: float) -> str:
                     break
             if stage_name is None:
                 return f"Stage {stage} not found in SIDE_DUTIES"
-            duty_node = _walk(tree, "Data", "Blocks", block_name, "Input",
+            duty_node = walk(tree, "Data", "Blocks", block_name, "Input",
                               "SIDE_DUTIES", stage_name, "DUTY")
             if duty_node is None:
                 return f"DUTY node not found for stage {stage}"
@@ -115,7 +226,7 @@ def tool_remove_side_duty(block_name: str, stage: int) -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            sd_node = _walk(tree, "Data", "Blocks", block_name, "Input", "SIDE_DUTIES")
+            sd_node = walk(tree, "Data", "Blocks", block_name, "Input", "SIDE_DUTIES")
             if sd_node is None:
                 return f"No SIDE_DUTIES on block '{block_name}'"
             target_idx = None
@@ -133,82 +244,6 @@ def tool_remove_side_duty(block_name: str, stage: int) -> str:
                 return f"Stage {stage} not found in SIDE_DUTIES"
             sd_node.Elements.RemoveRow(0, target_idx)
             return f"Side duty removed from {block_name} stage {stage}"
-        return aspen.call(impl)
-    except Exception as exc:
-        return f"Error: {exc}"
-
-
-def tool_list_all_ports() -> str:
-    """List ALL block ports and their connected streams across the entire flowsheet.
-
-    One-command overview: shows every block with its type, every port name,
-    and which streams are connected (or "(unconnected)" if empty).
-
-    Use this BEFORE connect() to see available ports, or BEFORE disconnect()
-    to check which streams are attached.
-
-    Example:
-      [E-1] (HEATER)
-        F(IN)  <-- R-OUT
-        P(OUT)  <-- E-OUT
-        HS(IN)  (unconnected)
-    """
-    try:
-        def impl():
-            tree = aspen._app.RootModel("")
-            blks = _walk(tree, "Data", "Blocks")
-            if blks is None:
-                return "No blocks found"
-            
-            lines = []
-            for bi in range(500):
-                try:
-                    b = blks.Elements(bi)
-                except Exception:
-                    break
-                if b is None:
-                    break
-                bname = b.Name
-                btype = b.Value
-                if not btype:
-                    btype = _BLOCK_TYPE_CACHE.get(bname, "")
-                
-                ports_node = _walk(tree, "Data", "Blocks", bname, "Ports")
-                if ports_node is None:
-                    continue
-                
-                port_list = []
-                for pi in range(50):
-                    try:
-                        p = ports_node.Elements(pi)
-                    except Exception:
-                        break
-                    if p is None:
-                        break
-                    pname = p.Name
-                    # Read connected streams
-                    streams = []
-                    try:
-                        els = p.Elements
-                        for ei in range(els.Count):
-                            try:
-                                streams.append(els.Item(ei).Name)
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                    if streams:
-                        port_list.append(f"    {pname}  <-- {', '.join(streams)}")
-                    else:
-                        port_list.append(f"    {pname}  (unconnected)")
-                
-                if port_list:
-                    lines.append(f"  [{bname}]" + (f" ({btype})" if btype else ""))
-                    lines.extend(port_list)
-            if not lines:
-                return "No blocks with ports found"
-            NL = chr(10)
-            return "All block ports:" + NL + NL.join(lines)
         return aspen.call(impl)
     except Exception as exc:
         return f"Error: {exc}"

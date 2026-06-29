@@ -1,12 +1,12 @@
 [project]
 name = "aspen-plus-mcp"
-version = "1.0.0"
-description = "MCP server for Aspen Plus process simulation — talk to Aspen Plus in natural language"
+version = "1.2.0"
+description = "MCP server for Aspen Plus process simulation — 75 tools for blocks, streams, columns, reactions, sensitivity analysis, and convergence diagnostics via COM automation"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "Reasonix Contributors"},
+    {name = "ddtlxc001"},
 ]
 keywords = ["aspen-plus", "mcp", "process-simulation", "chemical-engineering", "com-automation"]
 classifiers = [
@@ -31,7 +31,6 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/ddtlxc001/aspen-mcp"
 Repository = "https://github.com/ddtlxc001/aspen-mcp"
-Documentation = "https://github.com/ddtlxc001/aspen-mcp#readme"
 
 [project.scripts]
 aspen-mcp = "aspen_mcp.server:main"

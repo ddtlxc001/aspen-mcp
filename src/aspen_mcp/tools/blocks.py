@@ -9,17 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..com_bridge import aspen
-from .analysis import _BLOCK_MODES
-
-
-def _walk(root, *parts):
-    node = root
-    for p in parts:
-        try:
-            node = node.Elements(p)
-        except Exception:
-            return None
-    return node
+from ._common import walk, ensure_parent
 
 
 def _read_block_table_on_com(node: Any) -> dict[str, Any]:
@@ -58,7 +48,7 @@ def tool_list_all_blocks() -> list[str]:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            blk_node = _walk(tree, "Data", "Blocks")
+            blk_node = walk(tree, "Data", "Blocks")
             if blk_node is None:
                 return ["(no Blocks node)"]
             comps = []
@@ -82,13 +72,13 @@ def tool_get_block(name: str) -> dict[str, Any]:
         def impl():
             result: dict[str, Any] = {"name": name}
             tree = aspen._app.RootModel("")
-            blk = _walk(tree, "Data", "Blocks", name)
+            blk = walk(tree, "Data", "Blocks", name)
             if blk is None:
                 return {"error": f"Block '{name}' not found"}
             result["type"] = blk.Value
 
             for section in ("Input", "Output", "Subobjects", "Connections", "Ports"):
-                node = _walk(tree, "Data", "Blocks", name, section)
+                node = walk(tree, "Data", "Blocks", name, section)
                 if node is not None:
                     result[section.lower()] = _read_block_table_on_com(node)
 
@@ -103,54 +93,53 @@ _VALVE_ALIASES = {
     "PRES1": "P_OUT",
 }
 
-
-def _add_spec_opt_warning(tree, block_name, param, context):
-    """Return context with SPEC_OPT warning if param is irrelevant in current mode."""
-    blk = _walk(tree, "Data", "Blocks", block_name)
-    if blk is None:
-        return context
-    blk_type = blk.Value
-    mode_cfg = _BLOCK_MODES.get(blk_type)
-    if mode_cfg is None:
-        return context
-    mode_map = mode_cfg["mode_map"]
-    spec_node = _walk(tree, "Data", "Blocks", block_name, "Input", "SPEC_OPT")
-    if spec_node is None or not spec_node.Value:
-        return context
-    mode_value = str(spec_node.Value)
-    required = mode_map.get(mode_value, [])
-    if param not in required:
-        context += f"  Note: SPEC_OPT={mode_value}, {param} may not participate in this mode."
-    return context
-
 def tool_set_param(block_name: str, param: str, value: str | float) -> str:
-    """Set a block parameter (e.g. TEMP, PRES, DUTY).
+    """Set a block operating parameter. mutates=True.
 
-    Automatically detects unit and range via AttributeValue metadata.
-    Response includes [unit] and range=(min, max) when available.
+    Common params: TEMP, PRES, DUTY, VFRAC, NPHASE.
 
-    Args:
-        block_name: Block name (e.g. 'B1', 'E-1').
-        param: Parameter name (e.g. 'TEMP', 'PRES', 'SPEC_OPT').
-        value: Numeric value or string (e.g. 150, 'TP').
+    For HEATER blocks: setting TEMP automatically switches SPEC_OPT
+    from CONST-DUTY to CONST-TEMP so the temperature target takes effect.
 
-    Returns confirmation with unit hint, or error if param not found.
-    Note: Use set_stream_param() for stream parameters, NOT this tool.
+    Examples:
+      set_param("H1", "TEMP", 150)       -- heater outlet T
+      set_param("H1", "PRES", 5)         -- operating pressure
+      set_param("F1", "TEMP", 80)        -- flash temperature
+      set_param("H1", "DUTY", -500)      -- heat duty (neg=cooling)
+
+    For streams, use set_stream_param. Streams and blocks have
+    separate parameter trees in the Aspen COM object model.
     """
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            node = _walk(tree, "Data", "Blocks", block_name, "Input", param)
+            node = walk(tree, "Data", "Blocks", block_name, "Input", param)
             if node is None:
                 alias = _VALVE_ALIASES.get(param)
                 if alias:
-                    node = _walk(tree, "Data", "Blocks", block_name, "Input", alias)
+                    node = walk(tree, "Data", "Blocks", block_name, "Input", alias)
                     if node is not None:
                         node.SetValue(0, value)
                         return f"Set {block_name}.{alias} = {value} (via alias '{param}')"
                 return f"Could not set {block_name}.{param}"
             node.SetValue(0, value)
-            
+
+            # HEATER auto-mode-switch: when TEMP is set, ensure SPEC_OPT=CONST-TEMP
+            if param == "TEMP":
+                blk_type_node = walk(tree, "Data", "Blocks", block_name)
+                blk_type = blk_type_node.Value if blk_type_node else ""
+                if blk_type in ("HEATER", "V-DRUM1") or (
+                    blk_type == "" and walk(tree, "Data", "Blocks", block_name, "Input", "SPEC_OPT")
+                ):
+                    spec_opt = walk(tree, "Data", "Blocks", block_name, "Input", "SPEC_OPT")
+                    if spec_opt is not None:
+                        try:
+                            cur_mode = spec_opt.Value
+                            if cur_mode is None or str(cur_mode).upper() in ("CONST-DUTY", ""):
+                                spec_opt.SetValue(0, "CONST-TEMP")
+                        except Exception:
+                            pass
+
             # Try to read unit info (non-critical)
             context = ""
             try:
@@ -158,7 +147,8 @@ def tool_set_param(block_name: str, param: str, value: str | float) -> str:
                 i8 = node.AttributeValue(8)   # max
                 i9 = node.AttributeValue(9)   # min
                 unit_map = {5: "bar", 10: "kPa", 4: "degC", 3: "Gcal/hr",
-                            18: "kW", 7: "m", 1: "m3/hr"}
+                            18: "kW", 7: "m", 1: "m3/hr",
+                            20: "F", 21: "psia"}
                 unit = unit_map.get(i3, "")
                 if unit:
                     context = f" [{unit}]"
@@ -166,14 +156,7 @@ def tool_set_param(block_name: str, param: str, value: str | float) -> str:
                         context += f" range=({i9}, {i8})"
             except Exception:
                 pass
-            
-            # Check SPEC_OPT mode relevance (non-critical warning)
-            if param not in ("SPEC_OPT", "HEATOPT", "FLASH_FORM"):
-                try:
-                    context = _add_spec_opt_warning(tree, block_name, param, context)
-                except Exception:
-                    pass
-            
+
             return f"Set {block_name}.{param} = {value}{context}"
         return aspen.call(impl)
     except Exception as exc:
@@ -187,37 +170,6 @@ def tool_set_param(block_name: str, param: str, value: str | float) -> str:
         return f"Error: {exc}"
 
 
-def _ensure_parent(tree, *parts):
-    """Ensure a path exists, creating nodes as needed."""
-    node = tree
-    for p in parts:
-        try:
-            n = node.Elements(p)
-            if n is None:
-                raise Exception("none")
-            node = n
-        except Exception:
-            try:
-                node.Elements.Add(p)
-                node = node.Elements(p)
-            except Exception:
-                # Dummy trick for Data-level containers
-                name = parts[-1] if len(parts) > 0 else p
-                try:
-                    if name == "Blocks":
-                        node.Elements.Add("_d_!MIXER")
-                        node = node.Elements("Blocks")
-                        node.Elements.Remove("_d_")
-                        return node
-                    elif name == "Streams":
-                        node.Elements.Add("_d_")
-                        node = node.Elements("Streams")
-                        node.Elements.Remove("_d_")
-                        return node
-                except Exception:
-                    pass
-                return None
-    return node
 
 
 def tool_add_block(name: str, block_type: str) -> str:
@@ -242,17 +194,13 @@ def tool_add_block(name: str, block_type: str) -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            blk_node = _walk(tree, "Data", "Blocks")
+            blk_node = walk(tree, "Data", "Blocks")
             if blk_node is None:
-                blk_node = _ensure_parent(tree, "Data", "Blocks")
+                blk_node = ensure_parent(tree, "Data", "Blocks")
                 if blk_node is None:
                     return f"Error: Cannot create Blocks node"
             blk_elems = blk_node.Elements
             blk_elems.Add(f"{name}!{block_type}")
-            try:
-                aspen._app.Engine.Reinit(1, name)
-            except Exception:
-                pass
             return f"Block '{name}' (type={block_type}) added"
         return aspen.call(impl)
     except Exception as exc:
@@ -273,7 +221,7 @@ def tool_remove_block(name: str) -> str:
         def impl():
             tree = aspen._app.RootModel("")
             # Check for connected streams first
-            ports_node = _walk(tree, "Data", "Blocks", name, "Ports")
+            ports_node = walk(tree, "Data", "Blocks", name, "Ports")
             if ports_node is not None:
                 connected = []
                 for i in range(500):
@@ -300,7 +248,7 @@ def tool_remove_block(name: str) -> str:
                         f"Use disconnect() on each stream first, then retry remove_block().\n"
                         f"Example: disconnect('{connected[0]}')"
                     )
-            blk_node = _walk(tree, "Data", "Blocks")
+            blk_node = walk(tree, "Data", "Blocks")
             if blk_node is None:
                 return f"Error: Blocks node not found (data tree may be corrupted). Try close_file() then open_file()."
             blk_elems = blk_node.Elements
@@ -354,7 +302,7 @@ def tool_explore(path: str) -> dict[str, Any]:
         def impl():
             tree = aspen._app.RootModel("")
             parts = path.replace("/", "\\").split("\\")
-            node = _walk(tree, *parts)
+            node = walk(tree, *parts)
             if node is None:
                 return {"error": f"Path '{path}' not found"}
             return _node_info_on_com(node, depth_limit=2)
@@ -364,15 +312,10 @@ def tool_explore(path: str) -> dict[str, Any]:
 
 
 def tool_block_status(name: str) -> dict:
-    """Read block convergence status and key indicators.
+    """读取模块收敛状态和关键指标。
 
-    Returns BLKSTAT, PER_ERROR, PROPSTAT, and B_K from block Output.
-
-    BLKSTAT:
-        0 = OK (converged success)
-        1 = converged (alternative success code)
-        2 = not converged (ran but diverged)
-        3 = warning
+    返回 BLKSTAT、PER_ERROR、PROPSTAT、B_K（来自模块 Output）。
+    BLKSTAT 含义见 help("diagnostics")。
 
     Args:
         name: Block name.
@@ -385,14 +328,29 @@ def tool_block_status(name: str) -> dict:
         def impl():
             result = {"name": name}
             tree = aspen._app.RootModel("")
-            out = _walk(tree, "Data", "Blocks", name, "Output")
+            out = walk(tree, "Data", "Blocks", name, "Output")
             if out is None:
                 return {"error": f"Block '{name}' has no Output (not yet run)"}
 
             for key in ("BLKSTAT", "PER_ERROR", "PROPSTAT", "B_K"):
-                node = _walk(tree, "Data", "Blocks", name, "Output", key)
+                node = walk(tree, "Data", "Blocks", name, "Output", key)
                 if node is not None:
-                    result[key.lower()] = node.Value
+                    val = None
+                    # BLKSTAT may be a table/array node (not a simple scalar)
+                    # in which case node.Value returns None — try reading first child
+                    try:
+                        val = node.Value
+                    except Exception:
+                        pass
+                    if val is None:
+                        try:
+                            # Try reading first element of a table node
+                            first_child = node.Elements(0)
+                            if first_child is not None:
+                                val = first_child.Value
+                        except Exception:
+                            pass
+                    result[key.lower()] = val
 
             blk = result.get("blkstat")
             if blk == 0:

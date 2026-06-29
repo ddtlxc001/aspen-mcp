@@ -7,18 +7,7 @@ COM apartment thread.
 from __future__ import annotations
 
 from ..com_bridge import aspen
-
-
-def _walk(root, *parts):
-    node = root
-    for p in parts:
-        try:
-            node = node.Elements(p)
-        except Exception:
-            return None
-        if node is None:
-            return None
-    return node
+from ._common import walk
 
 
 _COLUMN_TYPES = {"FRACT1", "FRACT2", "FRACT3", "FRACT4",
@@ -29,16 +18,16 @@ _COLUMN_TYPES = {"FRACT1", "FRACT2", "FRACT3", "FRACT4",
 
 def _is_column(tree, name: str) -> bool:
     """Check if block is a column type."""
-    blk = _walk(tree, "Data", "Blocks", name)
+    blk = walk(tree, "Data", "Blocks", name)
     if blk is None:
         return False
     if blk.Value in _COLUMN_TYPES:
         return True
     # Fresh blocks may have empty Value; check for column-specific params
-    nstage = _walk(tree, "Data", "Blocks", name, "Input", "NSTAGE")
+    nstage = walk(tree, "Data", "Blocks", name, "Input", "NSTAGE")
     if nstage is not None:
         return True
-    condenser = _walk(tree, "Data", "Blocks", name, "Input", "CONDENSER")
+    condenser = walk(tree, "Data", "Blocks", name, "Input", "CONDENSER")
     if condenser is not None:
         return True
     return False
@@ -53,7 +42,7 @@ def tool_set_column_stages(block_name: str, nstage: int) -> str:
             tree = aspen._app.RootModel("")
             if not _is_column(tree, block_name):
                 return "Error: '" + block_name + "' is not a column block"
-            node = _walk(tree, "Data", "Blocks", block_name, "Input", "NSTAGE")
+            node = walk(tree, "Data", "Blocks", block_name, "Input", "NSTAGE")
             if node is None:
                 return "Error: NSTAGE not found on '" + block_name + "'"
             node.SetValue(0, nstage)
@@ -74,7 +63,7 @@ def tool_set_condenser_type(block_name: str, condenser_type: str) -> str:
             tree = aspen._app.RootModel("")
             if not _is_column(tree, block_name):
                 return "Error: '" + block_name + "' is not a column block"
-            node = _walk(tree, "Data", "Blocks", block_name, "Input", "CONDENSER")
+            node = walk(tree, "Data", "Blocks", block_name, "Input", "CONDENSER")
             if node is None:
                 return "Error: CONDENSER not found on '" + block_name + "'"
             node.SetValue(0, ct)
@@ -95,7 +84,7 @@ def tool_set_reboiler_type(block_name: str, reboiler_type: str) -> str:
             tree = aspen._app.RootModel("")
             if not _is_column(tree, block_name):
                 return "Error: '" + block_name + "' is not a column block"
-            node = _walk(tree, "Data", "Blocks", block_name, "Input", "REBOILER")
+            node = walk(tree, "Data", "Blocks", block_name, "Input", "REBOILER")
             if node is None:
                 return "Error: REBOILER not found on '" + block_name + "'"
             node.SetValue(0, rt)
@@ -121,7 +110,7 @@ def tool_set_feed_stage(block_name: str, stream_name: str, stage: int) -> str:
                 return "Error: '" + block_name + "' is not a column block"
 
             # Strategy 1: ABSBR1 style - FEED_STAGE has children by stream name
-            fs = _walk(tree, "Data", "Blocks", block_name, "Input", "FEED_STAGE")
+            fs = walk(tree, "Data", "Blocks", block_name, "Input", "FEED_STAGE")
             if fs is not None:
                 try:
                     child = fs.Elements(stream_name)
@@ -134,7 +123,7 @@ def tool_set_feed_stage(block_name: str, stream_name: str, stage: int) -> str:
                         "FEED_STAGE. Connect it to the column first.")
 
             # Strategy 2: RadFrac style - FEED_STAGES table
-            fs_node = _walk(tree, "Data", "Blocks", block_name,
+            fs_node = walk(tree, "Data", "Blocks", block_name,
                             "Input", "FEED_STAGES")
             if fs_node is None:
                 return ("Error: neither FEED_STAGE nor FEED_STAGES found "
@@ -147,7 +136,7 @@ def tool_set_feed_stage(block_name: str, stream_name: str, stage: int) -> str:
                 if c is None:
                     break
                 if c.Name == stream_name:
-                    stage_n = _walk(
+                    stage_n = walk(
                         tree, "Data", "Blocks", block_name,
                         "Input", "FEED_STAGES", stream_name, "STAGE")
                     if stage_n is not None:
@@ -181,13 +170,13 @@ def tool_set_product_stage(block_name: str, stream_name: str,
                 return "Error: '" + block_name + "' is not a column block"
 
             # Strategy 1: ABSBR1 style - PROD_STAGE child by stream name
-            ps = _walk(tree, "Data", "Blocks", block_name, "Input", "PROD_STAGE")
+            ps = walk(tree, "Data", "Blocks", block_name, "Input", "PROD_STAGE")
             if ps is not None:
                 try:
                     child = ps.Elements(stream_name)
                     child.SetValue(0, stage)
                     # Also set phase
-                    pp = _walk(tree, "Data", "Blocks", block_name,
+                    pp = walk(tree, "Data", "Blocks", block_name,
                                "Input", "PROD_PHASE")
                     if pp is not None:
                         try:
@@ -204,7 +193,7 @@ def tool_set_product_stage(block_name: str, stream_name: str,
                         "PROD_STAGE. Connect it to the column first.")
 
             # Strategy 2: RadFrac style
-            ps_node = _walk(tree, "Data", "Blocks", block_name,
+            ps_node = walk(tree, "Data", "Blocks", block_name,
                             "Input", "PROD_STAGES")
             if ps_node is None:
                 return ("Error: neither PROD_STAGE nor PROD_STAGES found "
@@ -217,10 +206,10 @@ def tool_set_product_stage(block_name: str, stream_name: str,
                 if c is None:
                     break
                 if c.Name == stream_name:
-                    stage_n = _walk(
+                    stage_n = walk(
                         tree, "Data", "Blocks", block_name,
                         "Input", "PROD_STAGES", stream_name, "STAGE")
-                    phase_n = _walk(
+                    phase_n = walk(
                         tree, "Data", "Blocks", block_name,
                         "Input", "PROD_STAGES", stream_name, "PHASE")
                     if stage_n is not None:
@@ -245,19 +234,77 @@ def tool_set_column_pressure(block_name: str, top_pres: float,
             tree = aspen._app.RootModel("")
             if not _is_column(tree, block_name):
                 return "Error: '" + block_name + "' is not a column block"
-            pres1 = _walk(tree, "Data", "Blocks", block_name,
+            pres1 = walk(tree, "Data", "Blocks", block_name,
                           "Input", "PRES1")
             if pres1 is None:
                 return "Error: PRES1 not found on '" + block_name + "'"
             pres1.SetValue(0, top_pres)
             msg = "Set " + block_name + " PRES1 (top pressure) = " + str(top_pres)
             if dp_stage is not None:
-                dp = _walk(tree, "Data", "Blocks", block_name,
+                dp = walk(tree, "Data", "Blocks", block_name,
                            "Input", "DP_STAGE")
                 if dp is not None:
                     dp.SetValue(0, dp_stage)
                     msg += ", DP_STAGE = " + str(dp_stage)
             return msg
+        return aspen.call(impl)
+    except Exception as exc:
+        return "Error: " + str(exc)
+
+
+def tool_set_column_specs(block_name: str, rr: float | None = None,
+                           d: float | None = None, b: float | None = None,
+                           br: float | None = None) -> str:
+    """Set RadFrac operating specifications. mutates=True.
+
+    Exactly 2 specs must be provided. Common combinations:
+      rr + d   — reflux ratio + distillate rate
+      rr + b   — reflux ratio + bottoms rate
+      rr + br  — reflux ratio + boilup ratio
+
+    Args:
+        block_name: Column block name (e.g. 'C1').
+        rr: Molar reflux ratio (BASIS_RR).
+        d: Distillate molar flow rate (BASIS_D).
+        b: Bottoms molar flow rate (BASIS_B).
+        br: Boilup ratio (BASIS_BR).
+    """
+    specs = {}
+    if rr is not None: specs["BASIS_RR"] = rr
+    if d is not None:  specs["BASIS_D"] = d
+    if b is not None:  specs["BASIS_B"] = b
+    if br is not None: specs["BASIS_BR"] = br
+
+    if len(specs) != 2:
+        return (f"Error: RadFrac requires exactly 2 operating specs. "
+                f"You provided {len(specs)}: {list(specs.keys())}. "
+                f"Use: rr + d, rr + b, or rr + br.")
+
+    try:
+        def impl():
+            tree = aspen._app.RootModel("")
+            if not _is_column(tree, block_name):
+                return "Error: '" + block_name + "' is not a column block"
+
+            # Clear old specs first (set to None to avoid 3-spec error)
+            for old_key in ("BASIS_RR", "BASIS_D", "BASIS_B", "BASIS_BR", "BASIS_VN"):
+                if old_key not in specs:
+                    try:
+                        node = walk(tree, "Data", "Blocks", block_name, "Input", old_key)
+                        if node is not None:
+                            node.SetValue(0, None)
+                    except Exception:
+                        pass
+
+            results = []
+            for key, val in specs.items():
+                node = walk(tree, "Data", "Blocks", block_name, "Input", key)
+                if node is None:
+                    return f"Error: {key} not found on '{block_name}'"
+                node.SetValue(0, val)
+                results.append(f"{key}={val}")
+
+            return f"Set {block_name} specs: {', '.join(results)}"
         return aspen.call(impl)
     except Exception as exc:
         return "Error: " + str(exc)

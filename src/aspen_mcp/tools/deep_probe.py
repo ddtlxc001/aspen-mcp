@@ -1,16 +1,7 @@
 """Deep probe tool for Aspen COM node properties."""
 from __future__ import annotations
 from ..com_bridge import aspen
-
-
-def _walk(root, *parts):
-    node = root
-    for p in parts:
-        try:
-            node = node.Elements(p)
-        except Exception:
-            return None
-    return node
+from ._common import walk
 
 
 def tool_deep_probe(block_name: str = "") -> str:
@@ -21,7 +12,7 @@ def tool_deep_probe(block_name: str = "") -> str:
         tree = app.RootModel("")
 
         if not block_name:
-            blocks = _walk(tree, "Data", "Blocks")
+            blocks = walk(tree, "Data", "Blocks")
             if blocks:
                 lines.append("=== ALL BLOCKS ===")
                 for i in range(200):
@@ -34,13 +25,13 @@ def tool_deep_probe(block_name: str = "") -> str:
                         break
             return "\n".join(lines)
 
-        blk = _walk(tree, "Data", "Blocks", block_name)
+        blk = walk(tree, "Data", "Blocks", block_name)
         if blk is None:
             return f"Block '{block_name}' not found"
 
         lines.append(f"=== BLOCK: {block_name} ({blk.Value}) ===")
 
-        inp = _walk(tree, "Data", "Blocks", block_name, "Input")
+        inp = walk(tree, "Data", "Blocks", block_name, "Input")
         if inp is None:
             return "No Input section"
 
@@ -111,13 +102,13 @@ def tool_deep_probe(block_name: str = "") -> str:
             lines.append(f"  Error object access: {str(e)[:80]}")
         
         # --- BLKSTAT/BLKMSG ---
-        out = _walk(tree, "Data", "Blocks", block_name, "Output")
+        out = walk(tree, "Data", "Blocks", block_name, "Output")
         if out:
             lines.append("")
             lines.append("--- BLKSTAT/BLKMSG ---")
             for name in ["BLKSTAT", "BLKMSG", "PER_ERROR", "PROPSTAT"]:
                 try:
-                    v = _walk(tree, "Data", "Blocks", block_name, "Output", name)
+                    v = walk(tree, "Data", "Blocks", block_name, "Output", name)
                     if v is not None:
                         lines.append(f"  {name} = {v.Value!r}")
                 except:
@@ -137,7 +128,7 @@ def tool_deep_probe(block_name: str = "") -> str:
         # --- CC Nodes search for non-binary values ---
         lines.append("")
         lines.append("--- CC Nodes non-binary values ---")
-        cc = _walk(tree, "Data", "Blocks", block_name, "CC Nodes")
+        cc = walk(tree, "Data", "Blocks", block_name, "CC Nodes")
         if cc:
             for i in range(200):
                 try:

@@ -1,0 +1,2 @@
+[console_scripts]
+aspen-mcp = aspen_mcp.server:main

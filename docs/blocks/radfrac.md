@@ -78,13 +78,27 @@ Side duties are rejected on condenser (stage 1) and reboiler (last stage).
 
 ## Typical Setup
 
-1. Place: `place_block(session, 'COL1', 'RadFrac')`
-2. Stages: `set_value(session, aspen_path='\Data\Blocks\COL1\Input\NSTAGE', value='30')`
-3. Condenser: `set_value(session, aspen_path='\Data\Blocks\COL1\Input\CONDENSER', value='TOTAL')`
-4. Spec 1: `set_value(session, aspen_path='\Data\Blocks\COL1\Input\BASIS_RR', value='2')`
-5. Spec 2: `set_value(session, aspen_path='\Data\Blocks\COL1\Input\BASIS_BR', value='3')`
-6. Feed stage: `set_value(session, aspen_path='\Data\Blocks\COL1\Input\FEED_STAGE\FEED', value='15')`
-7. Pressure: `set_value(session, aspen_path='\Data\Blocks\COL1\Input\PRES1', value='1', unit='atm')`
+**Using MCP tools (recommended):**
+```
+set_column_stages("C1", 20)
+set_condenser_type("C1", "TOTAL")
+set_column_specs("C1", rr=2.0, d=50.0)    # reflux ratio + distillate
+set_feed_stage("C1", "FEED", 10)
+set_column_pressure("C1", 1.0)
+```
+
+**Using COM paths directly:**
+```
+set_value(r"\Data\Blocks\C1\Input\NSTAGE", 20)
+set_value(r"\Data\Blocks\C1\Input\CONDENSER", "TOTAL")
+set_value(r"\Data\Blocks\C1\Input\BASIS_RR", 2)
+set_value(r"\Data\Blocks\C1\Input\BASIS_D", 50)
+set_value(r"\Data\Blocks\C1\Input\FEED_STAGE\FEED", 10)
+set_value(r"\Data\Blocks\C1\Input\PRES1", 1.0)
+```
+
+`set_column_specs` accepts exactly 2 of: `rr` (BASIS_RR), `d` (BASIS_D), `b` (BASIS_B), `br` (BASIS_BR).
+It automatically clears old specs before setting new ones.
 
 ## Gotchas
 

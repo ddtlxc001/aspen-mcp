@@ -34,20 +34,21 @@ def tool_set_value(path: str, value: str | float, unit: str | None = None) -> st
             node = tree.FindNode(path)
             if node is None:
                 return "Error: Path not found"
-            # If node has children and value is a string, try matching child
+            # If node has children and value is a string, try matching child.
+            # Accessing .Elements on a leaf node throws COM error 2010
+            # ("list operation on leaf node") — must be wrapped in try/except.
             try:
-                _has_kids = node.Elements.Count > 0
+                if node.Elements.Count > 0 and isinstance(value, str):
+                    for i in range(node.Elements.Count):
+                        try:
+                            child = node.Elements(i)
+                            if child.Name.upper() == value.upper():
+                                child.SetValue(0, value)
+                                return "Set " + path + " -> " + child.Name + " = " + value
+                        except Exception:
+                            pass
             except Exception:
-                _has_kids = False
-            if _has_kids and isinstance(value, str):
-                for i in range(node.Elements.Count):
-                    try:
-                        child = node.Elements(i)
-                        if child.Name.upper() == value.upper():
-                            child.SetValue(0, value)
-                            return "Set " + path + " -> " + child.Name + " = " + value
-                    except Exception:
-                        pass
+                pass  # leaf node — Elements is not accessible, fall through
             node.SetValue(0, value)
             return "Set " + path + " = " + str(value)
         result = aspen.call(impl)
@@ -56,28 +57,3 @@ def tool_set_value(path: str, value: str | float, unit: str | None = None) -> st
         return result
     except Exception as exc:
         return "Error: " + str(exc)
-
-def tool_insert_row(path: str, dimension: int = 0) -> str:
-    """Insert a new row in a table-type node.
-
-    Creates a new empty row. After insertion, the row is accessible
-    via FindNode using index notation (e.g. \\#0 for first row).
-
-    Args:
-        path: Backslash path to the table node.
-        dimension: Table dimension (default 0).
-    """
-    try:
-        def impl():
-            tree = aspen._app.RootModel("")
-            node = tree.FindNode(path)
-            if node is None:
-                return f"Error: Node not found: {path}"
-            els = node.Elements
-            idx = els.Count
-            els.InsertRow(dimension, idx)
-            return f"Inserted row at '{path}' dim={dimension} index={idx}."
-        return aspen.call(impl)
-    except Exception as exc:
-        return f"Error inserting row: {exc}"
-

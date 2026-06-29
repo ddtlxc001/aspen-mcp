@@ -36,41 +36,6 @@ def _save(data: dict[str, Any]) -> None:
         pass  # silently ignore write errors
 
 
-# --- Tool call log -----------------------------------------------------------
-
-
-def log_call(tool_name: str, args: dict[str, Any], result_summary: str,
-             ok: bool = True) -> None:
-    """Record one tool invocation to the call log."""
-    data = _load()
-    entry = {
-        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "tool": tool_name,
-        "args": {k: str(v) for k, v in sorted(args.items())},
-        "result": result_summary[:200],
-        "ok": ok,
-    }
-    data["calls"].append(entry)
-    # Keep last 200 calls
-    if len(data["calls"]) > 200:
-        data["calls"] = data["calls"][-200:]
-    _save(data)
-
-
-def get_call_log(limit: int = 20) -> list[dict[str, Any]]:
-    """Return the most recent tool calls."""
-    data = _load()
-    return data["calls"][-limit:]
-
-
-def clear_call_log() -> str:
-    """Clear the call log."""
-    data = _load()
-    data["calls"] = []
-    _save(data)
-    return "Call log cleared."
-
-
 # --- Sensitivity results cache -----------------------------------------------
 
 

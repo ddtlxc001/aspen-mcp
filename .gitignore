@@ -1,36 +1,15 @@
-# Virtual environment
 venv/
-
-# Python cache
+aspen_mcp_cache.json
+nul
 __pycache__/
 *.pyc
 *.pyo
-
-# Build / distribution
-*.egg-info/
-dist/
-build/
-
-# Runtime cache
-aspen_mcp_cache.json
-
-# Simulation files — NEVER commit these
-*.apw
+naphthalene_process.*
+*.ads
+*.appdf
 *.bkp
-*.rep
-
-# Aspen Plus generated temp files
-_*.oro
-_*.vjc
-_*.ehd
-
-# Scratch / local scripts
-nul
-
-# Removed dead code (keep ignored to prevent accidental re-commit)
-com_bridge2.py
-_remove_old_utils.py
-
-# OS artifacts
-.DS_Store
-Thumbs.db
+*.def
+*.for
+*.his
+src/aspen_plus_mcp.egg-info/
+aspen_mcp_cache.json

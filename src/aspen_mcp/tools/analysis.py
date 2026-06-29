@@ -10,60 +10,10 @@ from typing import Any
 
 from ..com_bridge import aspen
 from ..knowledge.convergence import search_failures
-from ._diagnostics import _check_utilities_completeness
+from ._common import walk
 
 
-def _walk(root, *parts):
-    node = root
-    for p in parts:
-        try:
-            node = node.Elements(p)
-        except Exception:
-            return None
-    return node
-
-
-# --- Sensitivity ------------------------------------------------------------
-
-
-def tool_sensitivity(
-    block_name: str,
-    variable: str,
-    values: list[float],
-    unit: str = "",
-) -> dict[str, Any]:
-    """Manual sensitivity: sweep a block variable and re-run."""
-    results: dict[str, Any] = {}
-    try:
-        for val in values:
-            try:
-                aspen.set_value(val, "Data", "Blocks", block_name, "Input", variable)
-            except Exception as e:
-                results[str(val)] = f"set failed: {e}"
-                continue
-            try:
-                aspen.reinit_and_run_safe(timeout=30)
-            except TimeoutError as e:
-                results[str(val)] = f"run timed out: {e}"
-                continue
-            except Exception as e:
-                results[str(val)] = f"run failed: {e}"
-                continue
-            val_node = aspen.get_value("Data", "Blocks", block_name, "Input", variable)
-            results[str(val)] = {"input": val_node}
-            for key in ("BLKSTAT", "PER_ERROR"):
-                try:
-                    out_node = aspen.get_value("Data", "Blocks", block_name, "Output", key)
-                    if out_node is not None:
-                        results[str(val)][key.lower()] = out_node
-                except Exception:
-                    pass
-        return results
-    except Exception as exc:
-        return {"error": str(exc)}
-
-
-# --- Report export ----------------------------------------------------------
+# --- 报告导出 --------------------------------------------------------------
 
 
 def tool_export_report_file(file_path: str) -> str:
@@ -75,9 +25,11 @@ def tool_export_report_file(file_path: str) -> str:
         return f"Error: {exc}"
 
 
-# --- Parameter diagnostics helper -------------------------------------------
+# --- 参数诊断辅助方法 -------------------------------------------------------
 
 
+# AttributeValue indices: (2=unit_group, 3=unit_code) → unit_label
+# See Aspen Plus COM documentation for IHNode::AttributeValue codes.
 _UNIT_HINTS = {
     (22, 4): "\u00b0C", (20, 5): "bar", (20, 10): "kPa",
     (13, 3): "Gcal/hr", (13, 18): "kW",
@@ -109,9 +61,6 @@ _BLOCK_MODES: dict[str, dict] = {
         "mode_map": {"TEMP": ["TEMP"], "DUTY": ["DUTY"]}},
     "COMPR": {"mode_param": "SPEC_OPT", "default_mode": "TEMP",
         "mode_map": {"TEMP": ["TEMP"], "DUTY": ["DUTY"], "PRES": ["PRES"], "DELP": ["DELP"]}},
-    "RSTOIC": {"mode_param": "SPEC_OPT", "default_mode": "TP",
-        "mode_map": {"TP": ["TEMP", "PRES"], "TEMP": ["TEMP"], "PRES": ["PRES"],
-                     "DUTY": ["DUTY"], "VFRAC": ["VFRAC"]}},
 }
 
 
@@ -134,7 +83,7 @@ def _read_option_list(param_node):
 def _get_block_type(tree, block_name):
     '''Get the Aspen block type string (e.g. HEATER, ICON2).'''
     try:
-        blk = _walk(tree, "Data", "Blocks", block_name)
+        blk = walk(tree, "Data", "Blocks", block_name)
         if blk is not None:
             return blk.Value
     except Exception:
@@ -145,7 +94,7 @@ def _get_block_type(tree, block_name):
 def _read_mode_value(tree, block_name, mode_param):
     '''Read current value of a mode-selector param like SPEC_OPT.'''
     try:
-        n = _walk(tree, "Data", "Blocks", block_name, "Input", mode_param)
+        n = walk(tree, "Data", "Blocks", block_name, "Input", mode_param)
         if n is not None and n.Value:
             return str(n.Value)
     except Exception:
@@ -163,7 +112,7 @@ def _categorize_block_params(tree, block_name):
     - mode_info:   human-readable like "SPEC_OPT=TEMP" or None
     '''
     blk_type = _get_block_type(tree, block_name)
-    inp = _walk(tree, "Data", "Blocks", block_name, "Input")
+    inp = walk(tree, "Data", "Blocks", block_name, "Input")
     if inp is None:
         return [], [], [], None
 
@@ -285,7 +234,7 @@ def _get_convergence_report() -> str:
     """Build a convergence report from current simulation state (on COM thread)."""
     tree = aspen._app.RootModel("")
     lines: list[str] = []
-    blocks_node = _walk(tree, "Data", "Blocks")
+    blocks_node = walk(tree, "Data", "Blocks")
     if blocks_node is not None:
         block_lines = []
         blocks_with_issues = []
@@ -297,10 +246,10 @@ def _get_convergence_report() -> str:
             if block is None:
                 break
             bname = block.Name
-            blkstat = _walk(tree, "Data", "Blocks", bname, "Output", "BLKSTAT")
-            perror = _walk(tree, "Data", "Blocks", bname, "Output", "PER_ERROR")
-            propstat = _walk(tree, "Data", "Blocks", bname, "Output", "PROPSTAT")
-            blkmsg = _walk(tree, "Data", "Blocks", bname, "Output", "BLKMSG")
+            blkstat = walk(tree, "Data", "Blocks", bname, "Output", "BLKSTAT")
+            perror = walk(tree, "Data", "Blocks", bname, "Output", "PER_ERROR")
+            propstat = walk(tree, "Data", "Blocks", bname, "Output", "PROPSTAT")
+            blkmsg = walk(tree, "Data", "Blocks", bname, "Output", "BLKMSG")
             msg = f"  {bname}"
             if blkstat is not None:
                 stat_map = {0: "OK", 1: "converged", 2: "not converged", 3: "warning"}
@@ -325,8 +274,7 @@ def _get_convergence_report() -> str:
                 if diag:
                     lines.append(f"  [{bname}]:")
                     lines.extend(diag)
-
-
+    return "\n".join(lines)
 def tool_diagnose(keywords: list[str]) -> str:
     """Diagnose convergence issues: live status + knowledge base search.
 
@@ -345,14 +293,14 @@ Use find_incomplete_inputs() for pre-run check of all blocks.
 """
     sections: list[str] = []
 
-    # Live convergence data
+    # 实时收敛数据
     try:
         report = aspen.call(lambda: _get_convergence_report())
         sections.append("=== Live Convergence Status ===\n" + report)
     except Exception as exc:
         sections.append(f"(live status unavailable: {exc})")
 
-    # Knowledge base matches
+    # 知识库匹配结果
     if keywords:
         sections.append("\n=== Knowledge Base Matches ===\n")
         for keyword in keywords:
@@ -372,21 +320,11 @@ Use find_incomplete_inputs() for pre-run check of all blocks.
 
 
 def tool_search_convergence_knowledge(keywords: list[str]) -> list[dict]:
-    """Diagnose convergence issues: live status + knowledge base search.
+    """Search the convergence knowledge base by keywords.
 
-Shows live block convergence status (BLKSTAT, PER_ERROR, BLKMSG)
-for all blocks. For blocks with BLKSTAT=2 (not converged), also
-shows parameter diagnostics with Chinese descriptions + unit hints.
-
-Then searches the built-in knowledge base for matching keywords.
-
-Args:
-    keywords: List of keywords to search (e.g. ["Wegstein"],
-              ["COLUMN DRIES UP"], ["NRTL"], ["convergence"]).
-
-Use validate_block(name) for focused analysis of ONE block.
-Use find_incomplete_inputs() for pre-run check of all blocks.
-"""
+    Returns ranked knowledge entries (title, description, fixes).
+    Use diagnose() instead for a combined live-status + knowledge search.
+    """
     results: list[dict] = []
     for keyword in keywords:
         for entry in search_failures([keyword]):
@@ -406,28 +344,19 @@ def tool_generate_input_summary(file_path: str) -> str:
         return f"Error: {exc}"
 
 
-def tool_readback(file_path: str, mode: int = 0) -> str:
-    """Read back a .bkp file into the current simulation."""
-    try:
-        aspen.call(lambda: aspen._app.Readback(file_path, mode))
-        return f"Readback successful from {file_path}"
-    except Exception as exc:
-        return f"Error: {exc}"
-
-
 def tool_list_tear_streams() -> list[str]:
     """List all tear streams in the simulation (recycle loops)."""
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            # Try multiple possible paths for tear streams
+            # 尝试多种可能的撕裂流股路径
             paths = [
                 ("Data", "Convergence", "Tear", "Input", "STREAMS"),
                 ("Data", "Convergence", "Tear", "Streams"),
                 ("Data", "Convergence", "Conv-Options", "Input", "TEAR_STREAMS"),
             ]
             for parts in paths:
-                tear = _walk(tree, *parts)
+                tear = walk(tree, *parts)
                 if tear is not None:
                     streams = []
                     for i in range(200):
@@ -442,7 +371,7 @@ def tool_list_tear_streams() -> list[str]:
                             streams.append(str(val))
                     if streams:
                         return streams
-                    # Try as 2D table with GetLabel
+                    # 尝试作为 2D 表使用 GetLabel
                     try:
                         els = tear.Elements if hasattr(tear, "Elements") else tear
                         for i in range(els.Count):
@@ -461,8 +390,8 @@ def tool_list_tear_streams() -> list[str]:
                         pass
                     if streams:
                         return streams
-            # Fallback: scan Convergence Tear Output
-            tear_out = _walk(tree, "Data", "Convergence", "Tear", "Output")
+            # 回退方案：扫描 Convergence Tear Output
+            tear_out = walk(tree, "Data", "Convergence", "Tear", "Output")
             if tear_out is not None:
                 for i in range(200):
                     try:
@@ -511,7 +440,7 @@ def tool_set_tear_estimate(stream_name: str, temp: float | None = None,
 
 
 
-# --- find_incomplete_inputs --------------------------------------------------
+# --- 查找未完成输入 ---------------------------------------------------------
 
 
 def tool_find_incomplete_inputs() -> str:
@@ -525,7 +454,7 @@ def tool_find_incomplete_inputs() -> str:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            blks = _walk(tree, "Data", "Blocks")
+            blks = walk(tree, "Data", "Blocks")
             if blks is None:
                 return "No Blocks node found"
 
@@ -576,11 +505,8 @@ def tool_find_incomplete_inputs() -> str:
 
                 results.append("")
 
-            util_lines = _check_utilities_completeness(tree)
-            if not results and not util_lines:
+            if not results:
                 return "All inputs appear complete."
-            if util_lines:
-                results = util_lines + results
             return "Params likely needing input:\n" + "\n".join(results).rstrip("\n\n")
         return aspen.call(impl)
     except Exception as exc:
@@ -603,16 +529,16 @@ def tool_validate_block(block_name: str) -> str:
                 lines.append(f"Engine error: {e}")
 
             tree = aspen._app.RootModel("")
-            blk = _walk(tree, "Data", "Blocks", block_name)
+            blk = walk(tree, "Data", "Blocks", block_name)
             if blk is not None:
                 lines.append(f"Block type = {blk.Value}")
 
-                # Run convergence info
-                out = _walk(tree, "Data", "Blocks", block_name, "Output")
+                # 运行收敛信息
+                out = walk(tree, "Data", "Blocks", block_name, "Output")
                 if out is not None:
-                    blkstat = _walk(tree, "Data", "Blocks", block_name, "Output", "BLKSTAT")
-                    blkmsg = _walk(tree, "Data", "Blocks", block_name, "Output", "BLKMSG")
-                    perror = _walk(tree, "Data", "Blocks", block_name, "Output", "PER_ERROR")
+                    blkstat = walk(tree, "Data", "Blocks", block_name, "Output", "BLKSTAT")
+                    blkmsg = walk(tree, "Data", "Blocks", block_name, "Output", "BLKMSG")
+                    perror = walk(tree, "Data", "Blocks", block_name, "Output", "PER_ERROR")
                     if blkstat is not None:
                         smap = {0: "OK", 1: "converged", 2: "not converged", 3: "warning"}
                         lines.append(f"BLKSTAT = {blkstat.Value} ({smap.get(blkstat.Value, '?')})")
@@ -621,7 +547,7 @@ def tool_validate_block(block_name: str) -> str:
                     if blkmsg is not None and blkmsg.Value:
                         lines.append(f"BLKMSG = {blkmsg.Value}")
 
-                # Parameter diagnostics
+                # 参数诊断
                 lines.append("")
                 lines.append("Parameter diagnostics (active but unset):")
                 diag = _param_diagnostics(tree, block_name, max_lines=15)
@@ -636,113 +562,6 @@ def tool_validate_block(block_name: str) -> str:
         return f"Error: {exc}"
 
 
-def tool_probe_f4() -> str:
-    """Deep probe of Aspen COM for F4/NextRequiredInput methods."""
-    import pythoncom, win32com.client
-    
-    def probe():
-        results = []
-        log = lambda s: results.append(str(s))
-        
-        log("="*60)
-        log("Apwn.Document FULL TypeInfo")
-        log("="*60)
-        
-        app = aspen._app
-        ti = app._oleobj_.GetTypeInfo()
-        ta = ti.GetTypeAttr()
-        log(f"Type: {getattr(ta, 'guid', 'n/a')}, funcs={ta.cFuncs}, vars={ta.cVars}")
-        
-        # Store ALL methods with their memids
-        all_methods = []
-        for i in range(ta.cFuncs):
-            fd = ti.GetFuncDesc(i)
-            names = ti.GetNames(fd.memid)
-            fname = names[0]
-            params = ", ".join(names[1:]) if len(names) > 1 else ""
-            all_methods.append((fd.memid, fname, params, fd.invkind))
-            log(f"  memid={fd.memid:6d} kind={fd.invkind}  {fname}({params})")
-        
-        log("")
-        log("="*60)
-        log("Probing Engine object")
-        log("="*60)
-        try:
-            eng = app.Engine
-            ti2 = eng._oleobj_.GetTypeInfo()
-            ta2 = ti2.GetTypeAttr()
-            log(f"Engine: funcs={ta2.cFuncs}, vars={ta2.cVars}")
-            for i in range(ta2.cFuncs):
-                fd = ti2.GetFuncDesc(i)
-                names = ti2.GetNames(fd.memid)
-                fname = names[0] if names else f"memid={fd.memid}"
-                params = ", ".join(names[1:]) if len(names) > 1 else ""
-                log(f"  memid={fd.memid:6d}  {fname}({params})")
-            
-            log(f"Engine.Ready = {eng.Ready}")
-            log(f"Engine.IsRunning = {eng.IsRunning}")
-        except Exception as e:
-            log(f"  Error: {e}")
-        
-        log("")
-        log("="*60)
-        log("Probing Cases (Icases)")
-        log("="*60)
-        try:
-            cases = app.Cases
-            ti3 = cases._oleobj_.GetTypeInfo()
-            ta3 = ti3.GetTypeAttr()
-            log(f"Cases: funcs={ta3.cFuncs}, vars={ta3.cVars}")
-            for i in range(ta3.cFuncs):
-                fd = ti3.GetFuncDesc(i)
-                names = ti3.GetNames(fd.memid)
-                fname = names[0] if names else f"memid={fd.memid}"
-                params = ", ".join(names[1:]) if len(names) > 1 else ""
-                log(f"  memid={fd.memid:6d}  {fname}({params})")
-        except Exception as e:
-            log(f"  Error: {e}")
-        
-        log("")
-        log("="*60)
-        log("Probing Tree")
-        log("="*60)
-        try:
-            tree = app.Tree
-            ti4 = tree._oleobj_.GetTypeInfo()
-            ta4 = ti4.GetTypeAttr()
-            log(f"Tree: funcs={ta4.cFuncs}, vars={ta4.cVars}")
-            for i in range(ta4.cFuncs):
-                fd = ti4.GetFuncDesc(i)
-                names = ti4.GetNames(fd.memid)
-                fname = names[0] if names else f"memid={fd.memid}"
-                params = ", ".join(names[1:]) if len(names) > 1 else ""
-                log(f"  memid={fd.memid:6d}  {fname}({params})")
-        except Exception as e:
-            log(f"  Error: {e}")
-        
-        log("")
-        log("="*60)
-        log("Running DISPID scan (methods)")
-        log("="*60)
-        _iapp = app._oleobj_.InvokeTypes
-        
-        # Try calling all methods that take 0 params
-        for memid, fname, params, invkind in sorted(all_methods, key=lambda x: x[0]):
-            if params != "" and "," not in params and "Optional" not in params:
-                continue  # Skip methods with params
-            try:
-                r = _iapp(1000, 0, invkind, (24, 0), (), fname)
-                r_str = str(r)[:200] if r is not None else "<None>"
-                log(f"  CALL {fname}() -> {r_str}")
-            except Exception as ex:
-                err = str(ex)[:100]
-                if "ОК" not in err and "параметров" not in err:
-                    log(f"  CALL {fname}() -> ERR: {err}")
-        
-        return "\n".join(results)
-    
-    return aspen.call(probe)
-
 
 def tool_simulation_warnings() -> list[str]:
     """Scan for common config issues and return warnings."""
@@ -751,8 +570,8 @@ def tool_simulation_warnings() -> list[str]:
             tree = aspen._app.RootModel("")
             warnings: list[str] = []
 
-            # Check for pressure mismatches between connected blocks
-            blks = _walk(tree, "Data", "Blocks")
+            # 检查连接模块之间的压力不匹配
+            blks = walk(tree, "Data", "Blocks")
             if blks is not None:
                 for i in range(200):
                     try:
@@ -762,10 +581,10 @@ def tool_simulation_warnings() -> list[str]:
                     if b is None:
                         break
                     bname = b.Name
-                    bin_pres = _walk(tree, "Data", "Blocks", bname, "Input", "PRES")
+                    bin_pres = walk(tree, "Data", "Blocks", bname, "Input", "PRES")
                     if bin_pres is None:
-                        bin_pres = _walk(tree, "Data", "Blocks", bname, "Input", "P_OUT")
-                    ports = _walk(tree, "Data", "Blocks", bname, "Ports")
+                        bin_pres = walk(tree, "Data", "Blocks", bname, "Input", "P_OUT")
+                    ports = walk(tree, "Data", "Blocks", bname, "Ports")
                     if ports is not None:
                         for pi in range(30):
                             try:
@@ -780,7 +599,7 @@ def tool_simulation_warnings() -> list[str]:
                                     for ei in range(els.Count):
                                         try:
                                             sname = els.Item(ei).Name
-                                            sp = _walk(tree, "Data", "Streams", sname, "Output", "PRES_OUT")
+                                            sp = walk(tree, "Data", "Streams", sname, "Output", "PRES_OUT")
                                             if sp is not None and sp.Value:
                                                 if bin_pres is not None and sp.Value and abs(float(sp.Value) - float(bin_pres.Value)) > 10:
                                                     warnings.append(
@@ -792,8 +611,8 @@ def tool_simulation_warnings() -> list[str]:
                                 except Exception:
                                     pass
 
-            # Check for unconnected feed streams
-            streams = _walk(tree, "Data", "Streams")
+            # 检查未连接的进料流股
+            streams = walk(tree, "Data", "Streams")
             if streams is not None:
                 for si in range(200):
                     try:
@@ -803,11 +622,11 @@ def tool_simulation_warnings() -> list[str]:
                     if s is None:
                         break
                     sname = s.Name
-                    dest = _walk(tree, "Data", "Streams", sname, "Output", "DESTINATION")
+                    dest = walk(tree, "Data", "Streams", sname, "Output", "DESTINATION")
                     if dest is None or not dest.Value:
-                        src = _walk(tree, "Data", "Streams", sname, "Output", "SOURCE")
+                        src = walk(tree, "Data", "Streams", sname, "Output", "SOURCE")
                         if src is None or not src.Value:
-                            temp = _walk(tree, "Data", "Streams", sname, "Input", "TEMP", "MIXED")
+                            temp = walk(tree, "Data", "Streams", sname, "Input", "TEMP", "MIXED")
                             if temp is not None and temp.Value:
                                 warnings.append(
                                     f"Unconnected stream '{sname}' has TEMP set but no destination"

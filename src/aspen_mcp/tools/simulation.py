@@ -1,36 +1,14 @@
-"""Simulation control tools: open, close, run, save, status."""
+"""仿真控制工具：打开、关闭、运行、保存、状态。"""
 
 from __future__ import annotations
 
-import os
-import shutil
-import tempfile
-
 from ..com_bridge import aspen
+from ._common import walk
 from .analysis import _get_convergence_report
-
-
-_TEMPLATE = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "templates",
-    "blank_template.apw",
-)
-
-
-def _walk(root, *parts):
-    node = root
-    for p in parts:
-        try:
-            node = node.Elements(p)
-        except Exception:
-            return None
-    return node
-
 
 
 def _check_all_uncalculated() -> str | None:
     """Check blocks after run: collect BLKMSG errors.
-
     In Aspen v15 (41.0), BLKSTAT=0 means "converged", not "uncalculated".
     BLKSTAT=2 means "not converged" (ran but diverged).
     BLKMSG has the actual Aspen error text.
@@ -39,7 +17,7 @@ def _check_all_uncalculated() -> str | None:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            blks = _walk(tree, "Data", "Blocks")
+            blks = walk(tree, "Data", "Blocks")
             if blks is None:
                 return None
             issues = []
@@ -51,8 +29,8 @@ def _check_all_uncalculated() -> str | None:
                 if b is None:
                     break
                 bname = b.Name
-                blkstat = _walk(tree, "Data", "Blocks", bname, "Output", "BLKSTAT")
-                blkmsg = _walk(tree, "Data", "Blocks", bname, "Output", "BLKMSG")
+                blkstat = walk(tree, "Data", "Blocks", bname, "Output", "BLKSTAT")
+                blkmsg = walk(tree, "Data", "Blocks", bname, "Output", "BLKMSG")
                 if blkmsg is not None and blkmsg.Value:
                     issues.append("  " + bname + ": BLKMSG=" + str(blkmsg.Value))
                 elif blkstat is not None and blkstat.Value == 2:
@@ -63,11 +41,8 @@ def _check_all_uncalculated() -> str | None:
         return aspen.call(impl)
     except Exception:
         return None
-
-
 def _check_feeds_before_run() -> str | None:
     """Check feed stream inputs before running.
-
     A feed stream has no upstream block (no SOURCE in Output).
     Those require the user to set TEMP, PRES, and composition.
     Returns an error message if any feed is incomplete, None if all OK.
@@ -75,7 +50,7 @@ def _check_feeds_before_run() -> str | None:
     try:
         def impl():
             tree = aspen._app.RootModel("")
-            streams_node = _walk(tree, "Data", "Streams")
+            streams_node = walk(tree, "Data", "Streams")
             if streams_node is None:
                 return None
             issues = []
@@ -87,9 +62,9 @@ def _check_feeds_before_run() -> str | None:
                 if s is None:
                     break
                 sname = s.Name
-                # Check if this stream is on any block's output port
+                # 检查此流股是否连接在某个模块的输出端口上
                 is_output = False
-                blks = _walk(tree, "Data", "Blocks")
+                blks = walk(tree, "Data", "Blocks")
                 if blks is not None:
                     for bi in range(500):
                         try:
@@ -98,7 +73,7 @@ def _check_feeds_before_run() -> str | None:
                             break
                         if b2 is None:
                             break
-                        ports_node = _walk(tree, "Data", "Blocks", b2.Name, "Ports")
+                        ports_node = walk(tree, "Data", "Blocks", b2.Name, "Ports")
                         if ports_node is not None:
                             for pi in range(50):
                                 try:
@@ -122,13 +97,13 @@ def _check_feeds_before_run() -> str | None:
                 if is_output:
                     continue
                 missing = []
-                temp = _walk(tree, "Data", "Streams", sname, "Input", "TEMP", "MIXED")
+                temp = walk(tree, "Data", "Streams", sname, "Input", "TEMP", "MIXED")
                 if temp is None or temp.Value is None:
                     missing.append("TEMP")
-                pres = _walk(tree, "Data", "Streams", sname, "Input", "PRES", "MIXED")
+                pres = walk(tree, "Data", "Streams", sname, "Input", "PRES", "MIXED")
                 if pres is None or pres.Value is None:
                     missing.append("PRES")
-                flow_node = _walk(tree, "Data", "Streams", sname, "Input", "FLOW", "MIXED")
+                flow_node = walk(tree, "Data", "Streams", sname, "Input", "FLOW", "MIXED")
                 has_comp = False
                 if flow_node is not None:
                     for ci in range(100):
@@ -142,7 +117,7 @@ def _check_feeds_before_run() -> str | None:
                             has_comp = True
                             break
                 if not has_comp:
-                    total = _walk(tree, "Data", "Streams", sname, "Input", "TOTAL", "MIXED")
+                    total = walk(tree, "Data", "Streams", sname, "Input", "TOTAL", "MIXED")
                     if total is None or total.Value is None or total.Value == 0:
                         missing.append("composition (no component flow or total flow)")
                 if missing:
@@ -162,12 +137,13 @@ def _check_feeds_before_run() -> str | None:
         return aspen.call(impl)
     except Exception:
         return None
-
-
 def tool_status() -> dict:
     """Return the current Aspen Plus connection / engine status."""
     return aspen.status()
 
+def tool_probe() -> dict:
+    """Diagnose COM state (app, root, tree access)."""
+    return aspen.probe()
 
 def tool_open_file(file_path: str) -> str:
     """Open an Aspen Plus simulation .apw file."""
@@ -176,13 +152,11 @@ def tool_open_file(file_path: str) -> str:
         return "Opened " + file_path
     except Exception as exc:
         exc_str = str(exc)
-        if "32" in exc_str and ("being used" in exc_str.lower() or chr(214) in exc_str):
+        if "32" in exc_str and "being used" in exc_str.lower():
             return "File is locked: " + str(exc) + ". Try close_file() first, then retry open_file()."
         if "RPC" in exc_str:
             return "COM error: " + str(exc) + ". Try close_file() then open_file() again."
         return "Error: " + str(exc)
-
-
 def tool_close_file() -> str:
     """Close the currently-open simulation file."""
     try:
@@ -190,8 +164,6 @@ def tool_close_file() -> str:
         return "File closed"
     except Exception as exc:
         return "Error: " + str(exc)
-
-
 def tool_run() -> str:
     """Run the simulation (synchronous) and return convergence diagnostics."""
     try:
@@ -203,15 +175,13 @@ def tool_run() -> str:
         result = "Simulation run completed.\n\n" + (report or "")
         warning = _check_all_uncalculated()
         if warning:
-            result += "\n\n" + warning
+            result += "\n\n" + (warning or "")
         return result
     except Exception as exc:
         exc_str = str(exc)
         if "RPC" in exc_str or chr(26381) in exc_str:
             return "COM error: " + str(exc) + ". Try close_file() then open_file() to recover, then reinit_and_run()."
         return "Error: " + str(exc)
-
-
 def tool_run_async() -> str:
     """Run the simulation (asynchronous, non-blocking)."""
     try:
@@ -219,8 +189,6 @@ def tool_run_async() -> str:
         return "Async simulation started"
     except Exception as exc:
         return "Error: " + str(exc)
-
-
 def tool_save(file_path: str | None = None) -> str:
     """Save the simulation. Optionally provide SaveAs path."""
     try:
@@ -228,8 +196,6 @@ def tool_save(file_path: str | None = None) -> str:
         return "Saved to " + str(file_path) if file_path else "File saved"
     except Exception as exc:
         return "Error: " + str(exc)
-
-
 def tool_reinit() -> str:
     """Reinitialize the simulation (reset results before re-running)."""
     try:
@@ -237,11 +203,8 @@ def tool_reinit() -> str:
         return "Simulation reinitialized"
     except Exception as exc:
         return "Error: " + str(exc)
-
-
 def tool_reinit_and_run() -> str:
     """Reinitialize then run synchronously.
-
     Reinit() clears old engine caches so Aspen rebuilds calculation order;
     Run2(0) executes synchronously.
     """
@@ -254,44 +217,35 @@ def tool_reinit_and_run() -> str:
         result = "Simulation reinitialized and run completed.\n\n" + (report or "")
         warning = _check_all_uncalculated()
         if warning:
-            result += "\n\n" + warning
+            result += "\n\n" + (warning or "")
         return result
     except Exception as exc:
         exc_str = str(exc)
         if "RPC" in exc_str or chr(26381) in exc_str:
             return "COM error: " + str(exc) + ". Try close_file() then open_file() to recover, then reinit_and_run() again."
         return "Error: " + str(exc)
-
-
 def tool_new_simulation() -> str:
-    """Create a new blank simulation with complete runtime structure.
+    """创建一个新的空白模拟。
 
-    Closes any open file first, copies the bundled blank template
-    (which has Run-Status / Stream-Class / Convergence nodes) to
-    %%TEMP%%, then opens the copy. The template has 0 components
-    and an empty topology (no blocks, no streams).
+    使用 Aspen 内置的 InitNew() 创建空白模拟，
+    包含 0 个组分和空拓扑。
+    无需外部模板文件。
     """
     try:
         try:
-            aspen.close_file()
+            aspen.call(lambda: aspen._app.InitNew())
         except Exception:
-            pass
-        _work_path = "C:\\Users\\34158\\reasonix\\desktop\\build\\bin\\aspen_blank_" + str(os.getpid()) + ".apw"
-        import shutil
-        shutil.copy2(_TEMPLATE, _work_path)
-        aspen.open_file(_work_path)
+            # 如果已初始化（错误 2001），仅执行 reinit
+            aspen.reinit()
         return ("New blank simulation created.\n"
                 "  - Components: none (add with add_component)\n"
                 "  - Property: PENG-ROB (change with set_property_method)\n"
                 "  - Topology: empty (add with add_block / add_stream)\n"
                 "Tip: run reinit_and_run() before first use to clear old results.")
     except Exception as exc:
-        exc_str = str(exc)
-        if "Permission" in exc_str or chr(214) in exc_str:
-            return "Error: Template file locked. Ensure no other Aspen process has it open."
-        if "RPC" in exc_str:
-            return "COM Error: " + str(exc) + ". Try close_file() then new_simulation() again."
         return "Error: " + str(exc)
+
+
 def tool_stop_simulation() -> str:
     """Stop the currently running simulation."""
     try:
@@ -299,8 +253,6 @@ def tool_stop_simulation() -> str:
         return "Simulation stopped."
     except Exception as exc:
         return "Error: " + str(exc)
-
-
 def tool_visible(show: bool) -> str:
     """Show or hide the Aspen Plus GUI window."""
     try:
@@ -308,11 +260,8 @@ def tool_visible(show: bool) -> str:
         return "Aspen Plus window is now " + ("visible" if show else "hidden") + "."
     except Exception as exc:
         return "Error: " + str(exc)
-
-
 def tool_run_script(file_path: str) -> str:
     '''Run a Python script inside Aspen Plus.
-
     The script runs in Aspen's internal Python environment,
     not the MCP host environment.
     '''
@@ -321,11 +270,8 @@ def tool_run_script(file_path: str) -> str:
         return "Script '" + file_path + "' executed."
     except Exception as exc:
         return "Error: " + str(exc)
-
-
 def tool_batch_refresh(off: bool) -> str:
     """Disable or re-enable GUI refresh.
-
     Turn refresh OFF before a series of bulk operations for speed,
     then turn it back ON when done.
     """
